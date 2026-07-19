@@ -13,6 +13,7 @@ type Wallet struct {
 	// used bson and not bson and json to not expose it
 	// to the outside world as the DTO will be used for that purpose
 	ID           primitive.ObjectID  `bson:"_id,omitempty"`
+	PhoneNumber  string              `bson:"phone_number"`
 	OwnerName    string              `bson:"owner_name"`
 	Balance      int64               `bson:"balance"`
 	CurrencyCode string              `bson:"currency_code"`
