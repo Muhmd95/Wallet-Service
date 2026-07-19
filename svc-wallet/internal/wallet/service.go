@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+// any validation of thre request should be done in the handler and not in the service layer
+
 type Service struct {
 	repo Repository // this is the repository layer that will be used to interact with the database
 }
@@ -14,11 +16,7 @@ func NewService(repo Repository) *Service {
 }
 
 func (s *Service) CreateWallet(ctx context.Context, req *CreateWalletRequest) (*CreateWalletResponse, error) {
-	// validateing the request payload before proceeding to create the wallet
-	err := req.Validate()
-	if err != nil {
-		return nil, err
-	}
+	// the request is validated in the handler
 
 	wallet := &Wallet{
 		PhoneNumber:  req.PhoneNumber,
@@ -29,7 +27,7 @@ func (s *Service) CreateWallet(ctx context.Context, req *CreateWalletRequest) (*
 		UpdatedAt:    time.Now(),
 	}
 
-	err = s.repo.CreateWallet(ctx, wallet)
+	err := s.repo.CreateWallet(ctx, wallet)
 	if err != nil {
 		return nil, err
 	}
@@ -45,10 +43,6 @@ func (s *Service) CreateWallet(ctx context.Context, req *CreateWalletRequest) (*
 }
 
 func (s *Service) GetWalletByPhoneNumber(ctx context.Context, phoneNumber string) (*GetWalletResponse, error) {
-	err := validatePhoneNumber(phoneNumber)
-	if err != nil {
-		return nil, err
-	}
 
 	wallet, err := s.repo.GetWalletByPhoneNumber(ctx, phoneNumber)
 	if err != nil {
@@ -69,10 +63,7 @@ func (s *Service) GetWalletByPhoneNumber(ctx context.Context, phoneNumber string
 
 // need to be refacoted in phase 2
 func (s *Service) ModifyWalletBalance(ctx context.Context, phoneNumber string, amount int64) (*GetWalletResponse, error) {
-	err := validatePhoneNumber(phoneNumber)
-	if err != nil {
-		return nil, err
-	}
+
 	wallet, err := s.repo.GetWalletByPhoneNumber(ctx, phoneNumber)
 	if err != nil {
 		return nil, err

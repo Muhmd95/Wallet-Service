@@ -51,7 +51,7 @@ func (r *CreateWalletRequest) Validate() error {
 
 	// verify the phone number is valid and starts with +20 and is 13 characters long
 	r.PhoneNumber = strings.TrimSpace(r.PhoneNumber)
-	err := validatePhoneNumber(r.PhoneNumber)
+	err := ValidatePhoneNumber(r.PhoneNumber)
 	if err != nil {
 		return err
 	}
@@ -59,7 +59,7 @@ func (r *CreateWalletRequest) Validate() error {
 	return nil
 }
 
-func validatePhoneNumber(phoneNumber string) error {
+func ValidatePhoneNumber(phoneNumber string) error {
 	phoneNumber = strings.TrimSpace(phoneNumber)
 	if !strings.HasPrefix(phoneNumber, "+20") || len(phoneNumber) != 13 {
 		return ErrInvalidPhoneNumber // return the domain error for invalid phone number format
