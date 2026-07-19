@@ -8,7 +8,6 @@ import (
 	//  to the service layer and then to the repository layer so if the
 	// http request is cancelled or times out the context will be cancelled
 	//  and the repository layer will stop the database operation
-	"errors" // Added for custom domain errors
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo" // this is used to interact with the mongo database
@@ -24,14 +23,6 @@ type Repository interface {
 
 	UpdateWalletBalance(ctx context.Context, phoneNumber string, amount int64) (*Wallet, error)
 }
-
-// --- Domain Errors ---
-// The service layer will check for these exact errors without knowing about
-// MongoDB to completely separate service from db
-var (
-	ErrWalletNotFound = errors.New("wallet not found")
-	ErrDuplicatePhone = errors.New("phone number is already registered")
-)
 
 type mongoRepository struct {
 	collection *mongo.Collection // this is the collection in the mongo database where the wallets are stored
@@ -53,7 +44,7 @@ func NewMongoRepository(db *mongo.Database) (Repository, error) {
 		// Return the error to main.go so it can decide how to handle the failure
 		return nil, err
 	}
-	return &mongoRepository{collection: coll}, nil // return the mongoRepository struct with the collection
+	return &mongoRepository{collection: coll}, nil // return the mongoRepository struct with the collection (this is a repository)
 
 }
 
@@ -82,6 +73,7 @@ func (r *mongoRepository) GetWalletByPhoneNumber(ctx context.Context, phoneNumbe
 	return &wallet, nil
 }
 
+// may be refactored in phase 2 to use transactions and atomic operations
 func (r *mongoRepository) UpdateWalletBalance(ctx context.Context, phoneNumber string, amount int64) (*Wallet, error) {
 	// this is the method that will update the balance of the wallet in the collection in the mongo database
 	// i will check the business logic before in the service layer

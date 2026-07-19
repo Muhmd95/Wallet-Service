@@ -36,46 +36,40 @@ type GetWalletResponse struct {
 	FamilyID     *string `json:"family_id,omitempty"`
 }
 
-type TransactionRequest struct {
-	PhoneNumber string `json:"phone_number"` // request are made by phone number and not
-	// wallet id because the user will not know the wallet id
-	Amount int64 `json:"amount"`
-}
-
-type TransactionResponse struct {
-	PhoneNumber string `json:"phone_number"`
-	Balance     int64  `json:"balance"`
-	// to annotate the response with a message to indicate if the transaction was successful or not
-	Message string `json:"message"`
-
-	//time stamps
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
 // validation function for the wallet
 func (r *CreateWalletRequest) Validate() error {
 	// 1. Trim spaces to prevent bypassing validation with empty spaces (e.g., "   ")
-	owner := strings.TrimSpace(r.OwnerName)
-	if len(owner) < 3 {
+	r.OwnerName = strings.TrimSpace(r.OwnerName)
+	if len(r.OwnerName) < 3 {
 		return fmt.Errorf("owner name is required and must be at least 3 valid characters")
 	}
 
-	currency := strings.TrimSpace(r.CurrencyCode)
-	if len(currency) != 3 {
+	r.CurrencyCode = strings.TrimSpace(r.CurrencyCode)
+	if len(r.CurrencyCode) != 3 {
 		return fmt.Errorf("currency code is required and must be exactly 3 characters")
 	}
 
-	phone := strings.TrimSpace(r.PhoneNumber)
-	if !strings.HasPrefix(phone, "+20") || len(phone) != 13 {
-		return fmt.Errorf("phone number must start with +20 and contain exactly 13 characters")
+	// verify the phone number is valid and starts with +20 and is 13 characters long
+	r.PhoneNumber = strings.TrimSpace(r.PhoneNumber)
+	err := validatePhoneNumber(r.PhoneNumber)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validatePhoneNumber(phoneNumber string) error {
+	phoneNumber = strings.TrimSpace(phoneNumber)
+	if !strings.HasPrefix(phoneNumber, "+20") || len(phoneNumber) != 13 {
+		return ErrInvalidPhoneNumber // return the domain error for invalid phone number format
 	}
 
 	// 2. Verify the payload is numeric (prevents +20ABCDEFGHIJ)
-	for _, ch := range phone[3:] {
+	for _, ch := range phoneNumber[3:] {
 		if ch < '0' || ch > '9' {
-			return fmt.Errorf("phone number must contain only numeric digits after the country code")
+			return ErrInvalidPhoneNumber // return the domain error for invalid phone number format
 		}
 	}
-
 	return nil
 }
