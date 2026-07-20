@@ -12,4 +12,5 @@ var (
 	ErrDuplicatePhone      = errors.New("phone number is already registered")
 	ErrInvalidPhoneNumber  = errors.New("invalid phone number format")
 	ErrInsufficientBalance = errors.New("insufficient balance for the requested operation")
+	ErrExceedsMaxBalance   = errors.New("deposit exceeds maximum wallet capacity")
 )

@@ -36,6 +36,19 @@ type GetWalletResponse struct {
 	FamilyID     *string `json:"family_id,omitempty"`
 }
 
+type UpdateWalletBalanceRequest struct {
+	PhoneNumber string `json:"phone_number"`
+	Amount      int64  `json:"amount"` // this can be positive or negative depending on the operation
+	// in the future i will add the currency code
+}
+
+type UpdateWalletBalanceResponse struct {
+	WalletID string `json:"wallet_id"`
+	Balance  int64  `json:"balance"`
+	// currency code will be added in the future
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 // validation function for the wallet
 func (r *CreateWalletRequest) Validate() error {
 	// 1. Trim spaces to prevent bypassing validation with empty spaces (e.g., "   ")

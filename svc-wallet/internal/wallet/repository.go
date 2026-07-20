@@ -10,6 +10,7 @@ import (
 	//  and the repository layer will stop the database operation
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo" // this is used to interact with the mongo database
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -49,7 +50,7 @@ func NewMongoRepository(db *mongo.Database) (Repository, error) {
 }
 
 func (r *mongoRepository) CreateWallet(ctx context.Context, wallet *Wallet) error {
-	_, err := r.collection.InsertOne(ctx, wallet) // this is the method that
+	result, err := r.collection.InsertOne(ctx, wallet) // this is the method that
 	// will insert the wallet into the collection in the mongo database and update the wallet
 	// object with the generated ID
 	if err != nil {
@@ -58,6 +59,7 @@ func (r *mongoRepository) CreateWallet(ctx context.Context, wallet *Wallet) erro
 		}
 		return err // return any other error
 	}
+	wallet.ID = result.InsertedID.(primitive.ObjectID) // update the wallet object with the generated ID
 	return nil
 }
 

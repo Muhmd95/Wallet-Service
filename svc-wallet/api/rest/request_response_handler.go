@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	// paths from project root:
 	"svc-wallet/internal/wallet"
@@ -70,6 +71,8 @@ func (c *WalletController) GetWallet(w http.ResponseWriter, r *http.Request) {
 	requestID := tracer.GetRequestID(ctx)
 
 	phoneNumber := r.URL.Query().Get("phone_number")
+	// + in the url is converted to space so i will replace it with + again
+	phoneNumber = strings.ReplaceAll(phoneNumber, " ", "+")
 
 	err := wallet.ValidatePhoneNumber(phoneNumber)
 	if err != nil {
@@ -110,10 +113,7 @@ func (c *WalletController) ModifyWalletBalance(w http.ResponseWriter, r *http.Re
 	ctx := r.Context()
 	requestID := tracer.GetRequestID(ctx)
 
-	var reqData struct {
-		PhoneNumber string `json:"phone_number"`
-		Amount      int64  `json:"amount"`
-	}
+	var reqData wallet.UpdateWalletBalanceRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&reqData); err != nil {
 		slog.Warn("Invalid request payload", "request_id", requestID, "error", err.Error())
@@ -137,6 +137,10 @@ func (c *WalletController) ModifyWalletBalance(w http.ResponseWriter, r *http.Re
 		} else if errors.Is(err, wallet.ErrInsufficientBalance) {
 			slog.Warn("Insufficient balance", "request_id", requestID, "phone_number", reqData.PhoneNumber)
 			http.Error(w, "Insufficient balance", http.StatusBadRequest)
+			return
+		} else if errors.Is(err, wallet.ErrExceedsMaxBalance) {
+			slog.Warn("Deposit exceeds maximum wallet capacity", "request_id", requestID, "phone_number", reqData.PhoneNumber)
+			http.Error(w, "Deposit exceeds maximum wallet capacity", http.StatusBadRequest)
 			return
 		}
 		slog.Error("Failed to modify wallet balance", "request_id", requestID, "error", err.Error())

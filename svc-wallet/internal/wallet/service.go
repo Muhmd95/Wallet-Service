@@ -2,6 +2,7 @@ package wallet
 
 import (
 	"context"
+	"math"
 	"time"
 )
 
@@ -62,12 +63,20 @@ func (s *Service) GetWalletByPhoneNumber(ctx context.Context, phoneNumber string
 }
 
 // need to be refacoted in phase 2
-func (s *Service) ModifyWalletBalance(ctx context.Context, phoneNumber string, amount int64) (*GetWalletResponse, error) {
+func (s *Service) ModifyWalletBalance(ctx context.Context, phoneNumber string, amount int64) (*UpdateWalletBalanceResponse, error) {
 
 	wallet, err := s.repo.GetWalletByPhoneNumber(ctx, phoneNumber)
 	if err != nil {
 		return nil, err
 	}
+
+	if amount > 0 {
+		// If the difference between the max limit and current balance is smaller than the amount, it will overflow
+		if math.MaxInt64-wallet.Balance < amount {
+			return nil, ErrExceedsMaxBalance // return the domain error for exceeding max balance
+		}
+	}
+
 	if wallet.Balance+amount < 0 {
 		return nil, ErrInsufficientBalance // return the domain error for insufficient balance
 	}
@@ -76,12 +85,9 @@ func (s *Service) ModifyWalletBalance(ctx context.Context, phoneNumber string, a
 		return nil, err
 	}
 
-	return &GetWalletResponse{
-		WalletID:     result.ID.Hex(),
-		PhoneNumber:  result.PhoneNumber,
-		OwnerName:    result.OwnerName,
-		CurrencyCode: result.CurrencyCode,
-		Balance:      result.Balance,
-		FamilyID:     nil,
+	return &UpdateWalletBalanceResponse{
+		WalletID:  result.ID.Hex(),
+		Balance:   result.Balance,
+		UpdatedAt: result.UpdatedAt,
 	}, nil
 }

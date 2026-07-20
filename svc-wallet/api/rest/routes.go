@@ -13,5 +13,5 @@ func RegisterRoutes(mux *http.ServeMux, controller *WalletController) {
 	mux.HandleFunc("GET /v1/wallets", RequestIDMiddleware(controller.GetWallet))
 
 	// 3. Modify the balance of an existing wallet (deposit/withdraw)
-	mux.HandleFunc("POST /v1/wallets/balance", RequestIDMiddleware(controller.ModifyWalletBalance))
+	mux.HandleFunc("PATCH /v1/wallets/balance", RequestIDMiddleware(controller.ModifyWalletBalance))
 }
