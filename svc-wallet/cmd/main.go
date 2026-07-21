@@ -5,14 +5,12 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/joho/godotenv"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 
 	// project paths
 	"svc-wallet/api/rest"
+	"svc-wallet/external/mongodb"
 	"svc-wallet/internal/wallet"
 	"svc-wallet/util/logger"
 )
@@ -28,9 +26,9 @@ func main() {
 	}
 
 	// coneect the port
-	port := os.Getenv("PORT")
+	port := os.Getenv("SERVER_PORT")
 	if port == "" {
-		port = "8080" // default port
+		port = "8000" // default port
 	}
 
 	// get mongo uri
@@ -46,15 +44,10 @@ func main() {
 		dbName = "wallet_db" // default database name
 	}
 
-	// Connect to MongoDB and apply 10 sec timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	clientOptions := options.Client().ApplyURI(mongoURI)
-	mongoClient, err := mongo.Connect(ctx, clientOptions)
+	mongoClient, err := mongodb.ConnectMongoDB(mongoURI)
 	if err != nil {
 		slog.Error("Failed to connect to MongoDB", "error", err.Error())
-		os.Exit(1)
+		os.Exit(1) // We crash the app here because it cannot run without a database
 	}
 
 	// ensure to disconnect the database
@@ -64,18 +57,11 @@ func main() {
 		}
 	}()
 
-	// ping mongodb to ensure connection is established
-	if err := mongoClient.Ping(ctx, nil); err != nil {
-		slog.Error("Failed to ping MongoDB", "error", err.Error())
-		os.Exit(1)
-	}
-	slog.Info("Connected to MongoDB", "dbName", dbName)
-
 	// init the database
 	database := mongoClient.Database(dbName)
 	slog.Info("Using database", "dbName", dbName)
 
-	walletRepo, err := wallet.NewMongoRepository(database)
+	walletRepo, err := mongodb.NewWalletRepository(database)
 	if err != nil {
 		slog.Error("Failed to create wallet repository", "error", err.Error())
 		os.Exit(1)

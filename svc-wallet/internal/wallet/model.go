@@ -3,6 +3,7 @@ package wallet
 // the schema for the wallet collection in the database
 
 import (
+	"errors"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -23,3 +24,14 @@ type Wallet struct {
 	CreatedAt time.Time `bson:"created_at"`
 	UpdatedAt time.Time `bson:"updated_at"`
 }
+
+// --- Domain Errors ---
+// The service layer will check for these exact errors without knowing about
+// MongoDB to completely separate service from db
+var (
+	ErrWalletNotFound      = errors.New("wallet not found")
+	ErrDuplicatePhone      = errors.New("phone number is already registered")
+	ErrInvalidPhoneNumber  = errors.New("invalid phone number format")
+	ErrInsufficientBalance = errors.New("insufficient balance for the requested operation")
+	ErrExceedsMaxBalance   = errors.New("deposit exceeds maximum wallet capacity")
+)
