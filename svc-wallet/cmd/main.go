@@ -73,7 +73,8 @@ func main() {
 	database := mongoClient.Database(dbName)
 	logger.Log.Info().Str("dbName", dbName).Msg("Using database")
 
-	walletRepo, err := mongodb.NewWalletRepository(database)
+	walletRepo, err := mongodb.NewWalletRepository(context.Background(), database) // passing context because this may introduce delay
+	// the rest are only memory connections
 	if err != nil {
 		logger.Log.Fatal().Err(err).Msg("Failed to create wallet repository")
 	}

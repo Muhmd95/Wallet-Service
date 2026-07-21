@@ -19,10 +19,10 @@ type mongoRepository struct {
 // this is the constructor for the mongoRepository struct it takes a mongo database and
 //
 //	returns a repository interface (to make the service layer interact only with the interface functions)
-func NewWalletRepository(db *mongo.Database) (wallet.Repository, error) {
+func NewWalletRepository(ctx context.Context, db *mongo.Database) (wallet.Repository, error) {
 	coll := db.Collection("wallets") // this is the collection in the mongo database where the wallets are stored
 	// configure the phone number to be unique
-	_, err := coll.Indexes().CreateOne(context.Background(), mongo.IndexModel{ // creating an index on phnumber, context is blank cuz to context
+	_, err := coll.Indexes().CreateOne(ctx, mongo.IndexModel{ // creating an index on phnumber, passing ctx to track the time
 		Keys:    bson.M{"phone_number": 1},                               // this is the index on the phone number field, 1 means ascending order
 		Options: options.Index().SetUnique(true).SetName("unique_phone"), // this is the name of the index and it is unique so
 		//that no two wallets can have the same phone number
