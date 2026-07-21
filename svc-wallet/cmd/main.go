@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log/slog"
 	"net/http"
 	"os"
 
@@ -13,16 +12,29 @@ import (
 	"svc-wallet/external/mongodb"
 	"svc-wallet/internal/wallet"
 	"svc-wallet/util/logger"
+	"svc-wallet/util/tracer"
 )
 
 func main() {
 	// Initialize logger
 	logger.InitLogger()
-	slog.Info("Starting svc-wallet ...")
+	logger.Log.Info().Msg("Starting svc-wallet ...")
+
+	// init the tracer
+	tp, err := tracer.InitTracer("svc-wallet")
+	if err != nil {
+		logger.Log.Fatal().Err(err).Msg("Failed to initialize tracer")
+	}
+
+	defer func() {
+		if err := tp.Shutdown(context.Background()); err != nil {
+			logger.Log.Error().Err(err).Msg("Failed to shutdown tracer")
+		}
+	}()
 
 	// load .ENV file
 	if err := godotenv.Load(".ENV"); err != nil {
-		slog.Warn("Error loading .ENV file", "error", err.Error()) // because when using docker env variables will be injected
+		logger.Log.Warn().Err(err).Msg("Error loading .ENV file") // because when using docker env variables will be injected
 	}
 
 	// coneect the port
@@ -34,8 +46,8 @@ func main() {
 	// get mongo uri
 	mongoURI := os.Getenv("MONGO_URI")
 	if mongoURI == "" {
-		slog.Error("MONGO_URI environment variable is required but not set")
-		os.Exit(1) // We crash the app here because it cannot run without a database
+		logger.Log.Fatal().Err(err).Msg("MONGO_URI environment variable is required but not set")
+		// fatal crashes the app dont need to use os.exit(1)
 	}
 
 	// get database name
@@ -46,25 +58,24 @@ func main() {
 
 	mongoClient, err := mongodb.ConnectMongoDB(mongoURI)
 	if err != nil {
-		slog.Error("Failed to connect to MongoDB", "error", err.Error())
-		os.Exit(1) // We crash the app here because it cannot run without a database
+		logger.Log.Fatal().Err(err).Msg("Failed to connect to MongoDB")
+		// We crash the app here because it cannot run without a database
 	}
 
 	// ensure to disconnect the database
 	defer func() {
 		if err := mongoClient.Disconnect(context.Background()); err != nil {
-			slog.Error("Failed to disconnect MongoDB", "error", err.Error())
+			logger.Log.Error().Err(err).Msg("Failed to disconnect MongoDB")
 		}
 	}()
 
 	// init the database
 	database := mongoClient.Database(dbName)
-	slog.Info("Using database", "dbName", dbName)
+	logger.Log.Info().Str("dbName", dbName).Msg("Using database")
 
 	walletRepo, err := mongodb.NewWalletRepository(database)
 	if err != nil {
-		slog.Error("Failed to create wallet repository", "error", err.Error())
-		os.Exit(1)
+		logger.Log.Fatal().Err(err).Msg("Failed to create wallet repository")
 	}
 
 	// Initialize the wallet service
@@ -84,12 +95,12 @@ func main() {
 		Handler: mux,
 	}
 
-	slog.Info("Server is listening", "port", port)
+	logger.Log.Info().Str("port", port).Msg("Server is listening")
 
 	// ListenAndServe blocks forever unless it crashes
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		slog.Error("Server crashed", "error", err.Error())
-		os.Exit(1)
+		logger.Log.Fatal().Err(err).Msg("Server crashed")
+
 	}
 
 }
