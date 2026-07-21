@@ -1,17 +1,18 @@
 package rest
 
 import (
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"net/http"
 )
 
 func RegisterRoutes(mux *http.ServeMux, controller *WalletController) {
 
-	// 1. Create a new wallet
-	mux.HandleFunc("POST /v1/wallets", RequestIDMiddleware(controller.CreateWallet))
+	walletHander := otelhttp.NewHandler(http.HandlerFunc(controller.WalletHandler), "WalletHandler")
 
-	// 2. Retrieve an existing wallet by phone number
-	mux.HandleFunc("GET /v1/wallets", RequestIDMiddleware(controller.GetWallet))
+	// 1. (refactored) Create a new wallet or get an existing wallet by phone number
+	mux.Handle("/v1/wallets/", walletHander)
 
-	// 3. Modify the balance of an existing wallet (deposit/withdraw)
-	mux.HandleFunc("PATCH /v1/wallets/balance", RequestIDMiddleware(controller.ModifyWalletBalance))
+	balanceHandler := otelhttp.NewHandler(http.HandlerFunc(controller.ModifyWalletBalance), "ModifyWalletBalance")
+	// 2. Modify the balance of an existing wallet (deposit/withdraw)
+	mux.Handle("/v1/wallets/balance", balanceHandler)
 }

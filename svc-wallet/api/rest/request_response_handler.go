@@ -3,49 +3,60 @@ package rest
 import (
 	"encoding/json"
 	"errors"
-	"log/slog"
 	"net/http"
 	"strings"
 
 	// paths from project root:
 	"svc-wallet/internal/wallet"
-	"svc-wallet/util/tracer"
+	"svc-wallet/util/logger"
 )
+
+// WalletController handles HTTP requests related to wallet operations.
+func (c *WalletController) WalletHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodPost:
+		c.CreateWallet(w, r)
+	case http.MethodGet:
+		c.GetWallet(w, r)
+	default:
+		respondWithError(w, http.StatusMethodNotAllowed, "Method not allowed")
+	}
+}
 
 // createWallet handler
 func (c *WalletController) CreateWallet(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-
+	// extract the context and the logger
 	ctx := r.Context()
-	requestID := tracer.GetRequestID(ctx)
+	log := logger.Ctx(ctx)
 
 	var reqData wallet.CreateWalletRequest
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&reqData); err != nil {
-		slog.Warn("Failed to decode request body", "request_id", requestID, "error", err.Error())
-		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		log.Warn().Err(err).Msg("Failed to decode request body")
+		respondWithError(w, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
 
 	err := reqData.Validate()
 	if err != nil {
-		slog.Warn("Invalid request data", "request_id", requestID, "error", err.Error())
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		log.Warn().Err(err).Msg("Invalid request data")
+		respondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	slog.Info("Creating wallet", "request_id", requestID, "phone_number", reqData.PhoneNumber, "owner_name", reqData.OwnerName)
+	log.Info().Str("phone_number", reqData.PhoneNumber).Str("owner_name", reqData.OwnerName).Msg("Creating wallet")
 
-	response, err := c.service.CreateWallet(ctx, &reqData)
+	createResponse, err := c.service.CreateWallet(ctx, &reqData)
 	if err != nil {
 		if errors.Is(err, wallet.ErrDuplicatePhone) { // dont leak database errors
-			slog.Warn("Duplicate wallet creation attempt", "request_id", requestID, "phone_number", reqData.PhoneNumber)
-			http.Error(w, "Wallet with this phone number already exists", http.StatusConflict)
+			log.Warn().Str("phone_number", reqData.PhoneNumber).Msg("Duplicate wallet creation attempt")
+			respondWithError(w, http.StatusConflict, "Wallet with this phone number already exists")
 			return
 		}
 
-		slog.Error("Failed to create wallet", "request_id", requestID, "error", err.Error())
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		log.Error().Err(err).Msg("Failed to create wallet")
+		respondWithError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
 
@@ -53,13 +64,13 @@ func (c *WalletController) CreateWallet(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusCreated)
 
 	encoder := json.NewEncoder(w)
-	if err := encoder.Encode(response); err != nil {
-		slog.Error("Failed to encode response", "request_id", requestID, "error", err.Error())
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+	if err := encoder.Encode(createResponse); err != nil {
+		log.Error().Err(err).Msg("Failed to encode response")
+		respondWithError(w, http.StatusInternalServerError, "Failed to encode response")
 		return
 	}
 
-	slog.Info("Wallet created successfully", "request_id", requestID, "wallet_id", response.WalletID)
+	log.Info().Str("wallet_id", createResponse.WalletID).Msg("Wallet created successfully")
 
 }
 
@@ -68,7 +79,7 @@ func (c *WalletController) GetWallet(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	ctx := r.Context()
-	requestID := tracer.GetRequestID(ctx)
+	log := logger.Ctx(ctx)
 
 	phoneNumber := r.URL.Query().Get("phone_number")
 	// + in the url is converted to space so i will replace it with + again
@@ -76,33 +87,33 @@ func (c *WalletController) GetWallet(w http.ResponseWriter, r *http.Request) {
 
 	err := wallet.ValidatePhoneNumber(phoneNumber)
 	if err != nil {
-		slog.Warn("Invalid phone number", "request_id", requestID, "error", err.Error())
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		log.Warn().Err(err).Msg("Invalid phone number")
+		respondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	walletResponse, err := c.service.GetWalletByPhoneNumber(ctx, phoneNumber)
+	getResponse, err := c.service.GetWalletByPhoneNumber(ctx, phoneNumber)
 	if err != nil {
 		if errors.Is(err, wallet.ErrWalletNotFound) { // dont leak database errors
-			slog.Warn("Wallet not found", "request_id", requestID, "phone_number", phoneNumber)
-			http.Error(w, "Wallet not found", http.StatusNotFound)
+			log.Warn().Str("phone_number", phoneNumber).Msg("Wallet not found")
+			respondWithError(w, http.StatusNotFound, "Wallet not found")
 			return
 		}
-		slog.Error("Failed to get wallet", "request_id", requestID, "error", err.Error())
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		log.Error().Err(err).Msg("Failed to get wallet")
+		respondWithError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	encoder := json.NewEncoder(w)
-	if err := encoder.Encode(walletResponse); err != nil {
-		slog.Error("Failed to encode response", "request_id", requestID, "error", err.Error())
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+	if err := encoder.Encode(getResponse); err != nil {
+		log.Error().Err(err).Msg("Failed to encode response")
+		respondWithError(w, http.StatusInternalServerError, "Failed to encode response")
 		return
 	}
 
-	slog.Info("Wallet response sent successfully", "request_id", requestID, "phone_number", phoneNumber)
+	log.Info().Str("phone_number", phoneNumber).Msg("Wallet response sent successfully")
 
 }
 
@@ -111,40 +122,45 @@ func (c *WalletController) ModifyWalletBalance(w http.ResponseWriter, r *http.Re
 	defer r.Body.Close()
 
 	ctx := r.Context()
-	requestID := tracer.GetRequestID(ctx)
+	log := logger.Ctx(ctx)
+	if r.Method != http.MethodPatch {
+		log.Warn().Msg("Method not allowed")
+		respondWithError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
 
 	var reqData wallet.UpdateWalletBalanceRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&reqData); err != nil {
-		slog.Warn("Invalid request payload", "request_id", requestID, "error", err.Error())
-		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		log.Warn().Err(err).Msg("Invalid request payload")
+		respondWithError(w, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
 
 	err := wallet.ValidatePhoneNumber(reqData.PhoneNumber)
 	if err != nil {
-		slog.Warn("Invalid phone number", "request_id", requestID, "error", err.Error())
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		log.Warn().Err(err).Msg("Invalid phone number")
+		respondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	resWallet, err := c.service.ModifyWalletBalance(ctx, reqData.PhoneNumber, reqData.Amount)
+	modifyResponse, err := c.service.ModifyWalletBalance(ctx, reqData.PhoneNumber, reqData.Amount)
 	if err != nil {
 		if errors.Is(err, wallet.ErrWalletNotFound) {
-			slog.Warn("Wallet not found", "request_id", requestID, "phone_number", reqData.PhoneNumber)
-			http.Error(w, "Wallet not found", http.StatusNotFound)
+			log.Warn().Str("phone_number", reqData.PhoneNumber).Msg("Wallet not found")
+			respondWithError(w, http.StatusNotFound, "Wallet not found")
 			return
 		} else if errors.Is(err, wallet.ErrInsufficientBalance) {
-			slog.Warn("Insufficient balance", "request_id", requestID, "phone_number", reqData.PhoneNumber)
-			http.Error(w, "Insufficient balance", http.StatusBadRequest)
+			log.Warn().Str("phone_number", reqData.PhoneNumber).Msg("Insufficient balance")
+			respondWithError(w, http.StatusBadRequest, "Insufficient balance")
 			return
 		} else if errors.Is(err, wallet.ErrExceedsMaxBalance) {
-			slog.Warn("Deposit exceeds maximum wallet capacity", "request_id", requestID, "phone_number", reqData.PhoneNumber)
-			http.Error(w, "Deposit exceeds maximum wallet capacity", http.StatusBadRequest)
+			log.Warn().Str("phone_number", reqData.PhoneNumber).Msg("Deposit exceeds maximum wallet capacity")
+			respondWithError(w, http.StatusBadRequest, "Deposit exceeds maximum wallet capacity")
 			return
 		}
-		slog.Error("Failed to modify wallet balance", "request_id", requestID, "error", err.Error())
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		log.Error().Err(err).Msg("Failed to modify wallet balance")
+		respondWithError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
 
@@ -152,12 +168,19 @@ func (c *WalletController) ModifyWalletBalance(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusOK)
 
 	encoder := json.NewEncoder(w)
-	if err := encoder.Encode(resWallet); err != nil {
-		slog.Error("Failed to encode response", "request_id", requestID, "error", err.Error())
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+	if err := encoder.Encode(modifyResponse); err != nil {
+		log.Error().Err(err).Msg("Failed to encode response")
+		respondWithError(w, http.StatusInternalServerError, "Failed to encode response")
 		return
 	}
 
-	slog.Info("Wallet balance modification response sent successfully", "request_id", requestID, "phone_number", reqData.PhoneNumber)
+	log.Info().Str("phone_number", reqData.PhoneNumber).Msg("Wallet balance modification response sent successfully")
 
+}
+
+// helper function to return errors and json response to the client
+func respondWithError(w http.ResponseWriter, code int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
