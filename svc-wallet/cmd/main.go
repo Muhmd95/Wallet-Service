@@ -17,7 +17,7 @@ import (
 
 func main() {
 	// Initialize logger
-	logger.InitLogger()
+	logger.InitLogger("svc-wallet")
 	logger.Log.Info().Msg("Starting svc-wallet ...")
 
 	// init the tracer

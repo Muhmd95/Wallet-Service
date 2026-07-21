@@ -11,7 +11,7 @@ import (
 // Log is the globally accessible logger instance
 var Log zerolog.Logger
 
-func InitLogger() {
+func InitLogger(serviceName string) {
 	// console writer for human-readable output
 	consoleWriter := zerolog.ConsoleWriter{
 		Out:        os.Stdout,
@@ -19,7 +19,7 @@ func InitLogger() {
 	}
 
 	// creae the logger instance with the console writer and timestamp
-	Log = zerolog.New(consoleWriter).With().Timestamp().Logger()
+	Log = zerolog.New(consoleWriter).With().Timestamp().Str("service", serviceName).Logger()
 }
 
 // Ctx extracts the OpenTelemetry Trace ID from the context and attaches it to the logger.
