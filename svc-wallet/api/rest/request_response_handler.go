@@ -95,7 +95,7 @@ func (c *WalletController) GetWallet(w http.ResponseWriter, r *http.Request) {
 	getResponse, err := c.service.GetWalletByPhoneNumber(ctx, phoneNumber)
 	if err != nil {
 		if errors.Is(err, wallet.ErrWalletNotFound) { // dont leak database errors
-			log.Warn().Str("phone_number", phoneNumber).Msg("Wallet not found")
+			log.Warn().Err(err).Str("phone_number", phoneNumber).Msg("Failed to get wallet by phone number")
 			respondWithError(w, http.StatusNotFound, "Wallet not found")
 			return
 		}
@@ -113,7 +113,7 @@ func (c *WalletController) GetWallet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Info().Str("phone_number", phoneNumber).Msg("Wallet response sent successfully")
+	log.Info().Str("phone_number", phoneNumber).Msg("Get wallet response sent successfully")
 
 }
 
