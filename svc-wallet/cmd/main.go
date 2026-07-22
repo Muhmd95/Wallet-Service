@@ -4,6 +4,9 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/joho/godotenv"
 
@@ -46,7 +49,7 @@ func main() {
 	// get mongo uri
 	mongoURI := os.Getenv("MONGO_URI")
 	if mongoURI == "" {
-		logger.Log.Fatal().Err(err).Msg("MONGO_URI environment variable is required but not set")
+		logger.Log.Fatal().Msg("MONGO_URI environment variable is required but not set")
 		// fatal crashes the app dont need to use os.exit(1)
 	}
 
@@ -99,9 +102,35 @@ func main() {
 	logger.Log.Info().Str("port", port).Msg("Server is listening")
 
 	// ListenAndServe blocks forever unless it crashes
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		logger.Log.Fatal().Err(err).Msg("Server crashed")
+	//if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	//logger.Log.Fatal().Err(err).Msg("Server crashed")
 
+	//}
+
+	// 1. Run the server in a separate goroutine so it doesn't block the rest of the code
+	// 1. Run the server in a goroutine
+	go func() {
+		logger.Log.Info().Str("port", port).Msg("Server is listening")
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Log.Fatal().Err(err).Msg("Server crashed")
+		}
+	}()
+
+	// 2. Set up the signal listener
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+
+	// 3. Block until a shutdown signal is caught
+	<-quit
+	logger.Log.Info().Msg("Shutting down svc-wallet gracefully...")
+
+	// 4. Wait up to 10 seconds for current requests to finish
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(ctx); err != nil {
+		logger.Log.Fatal().Err(err).Msg("Server forced to shutdown")
 	}
 
+	logger.Log.Info().Msg("svc-wallet exited safely")
 }

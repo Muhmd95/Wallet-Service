@@ -1,7 +1,7 @@
 package rest
 
 import (
-	"svc-wallet/internal/wallet" // Update with your actual module path
+	"svc-wallet/internal/wallet"
 )
 
 // WalletController handles HTTP requests related to wallet operations.
