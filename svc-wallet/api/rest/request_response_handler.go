@@ -51,7 +51,7 @@ func (c *WalletController) CreateWallet(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		if errors.Is(err, wallet.ErrDuplicatePhone) { // dont leak database errors
 			log.Warn().Str("phone_number", reqData.PhoneNumber).Msg("Duplicate wallet creation attempt")
-			respondWithError(w, http.StatusConflict, "Wallet with this phone number already exists")
+			respondWithError(w, http.StatusConflict, err.Error())
 			return
 		}
 
@@ -96,7 +96,7 @@ func (c *WalletController) GetWallet(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, wallet.ErrWalletNotFound) { // dont leak database errors
 			log.Warn().Err(err).Str("phone_number", phoneNumber).Msg("Failed to get wallet by phone number")
-			respondWithError(w, http.StatusNotFound, "Wallet not found")
+			respondWithError(w, http.StatusNotFound, err.Error())
 			return
 		}
 		log.Error().Err(err).Msg("Failed to get wallet")
@@ -148,15 +148,15 @@ func (c *WalletController) ModifyWalletBalance(w http.ResponseWriter, r *http.Re
 	if err != nil {
 		if errors.Is(err, wallet.ErrWalletNotFound) {
 			log.Warn().Str("phone_number", reqData.PhoneNumber).Msg("Wallet not found")
-			respondWithError(w, http.StatusNotFound, "Wallet not found")
+			respondWithError(w, http.StatusNotFound, err.Error())
 			return
 		} else if errors.Is(err, wallet.ErrInsufficientBalance) {
 			log.Warn().Str("phone_number", reqData.PhoneNumber).Msg("Insufficient balance")
-			respondWithError(w, http.StatusBadRequest, "Insufficient balance")
+			respondWithError(w, http.StatusBadRequest, err.Error())
 			return
 		} else if errors.Is(err, wallet.ErrExceedsMaxBalance) {
 			log.Warn().Str("phone_number", reqData.PhoneNumber).Msg("Deposit exceeds maximum wallet capacity")
-			respondWithError(w, http.StatusBadRequest, "Deposit exceeds maximum wallet capacity")
+			respondWithError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		log.Error().Err(err).Msg("Failed to modify wallet balance")
