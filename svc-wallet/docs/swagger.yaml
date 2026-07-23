@@ -1,0 +1,198 @@
+basePath: /v1
+definitions:
+  wallet.CreateWalletRequest:
+    properties:
+      currency_code:
+        type: string
+      family_id:
+        description: a pointer because it can be null if the wallet is not part of
+          a family
+        type: string
+      owner_name:
+        description: since they are 3 fields only i will not use a validation library
+        type: string
+      phone_number:
+        type: string
+    type: object
+  wallet.CreateWalletResponse:
+    properties:
+      balance:
+        description: the client will not know how to handle an ObjectID so i will
+          handle it by .HEX()
+        type: integer
+      created_at:
+        description: time stamps
+        type: string
+      wallet_id:
+        description: note that this is a string and not an ObjectID because
+        type: string
+    type: object
+  wallet.GetWalletResponse:
+    properties:
+      balance:
+        type: integer
+      currency_code:
+        type: string
+      family_id:
+        type: string
+      owner_name:
+        type: string
+      phone_number:
+        type: string
+      wallet_id:
+        type: string
+    type: object
+  wallet.UpdateWalletBalanceRequest:
+    properties:
+      amount:
+        description: this can be positive or negative depending on the operation
+        type: integer
+      phone_number:
+        type: string
+    type: object
+  wallet.UpdateWalletBalanceResponse:
+    properties:
+      balance:
+        type: integer
+      updated_at:
+        description: currency code will be added in the future
+        type: string
+      wallet_id:
+        type: string
+    type: object
+host: localhost:8000
+info:
+  contact: {}
+  description: This microservice handles wallets.
+  title: Wallet Service API
+  version: "1.0"
+paths:
+  /wallet:
+    get:
+      consumes:
+      - application/json
+      description: Fetches the wallet details using the provided phone number query
+        parameter.
+      parameters:
+      - description: Phone number (include country code, e.g., +123456789)
+        in: query
+        name: phone_number
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Wallet retrieved successfully
+          schema:
+            $ref: '#/definitions/wallet.GetWalletResponse'
+        "400":
+          description: Bad Request (Invalid phone number format)
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Wallet Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Retrieve a wallet
+      tags:
+      - Wallet
+    post:
+      consumes:
+      - application/json
+      description: Validates the incoming payload and creates a new wallet associated
+        with a phone number.
+      parameters:
+      - description: Create Wallet Payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/wallet.CreateWalletRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Wallet created successfully
+          schema:
+            $ref: '#/definitions/wallet.CreateWalletResponse'
+        "400":
+          description: Bad Request (Invalid payload or data)
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict (Duplicate phone number)
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Create a new wallet
+      tags:
+      - Wallet
+  /wallet/balance:
+    patch:
+      consumes:
+      - application/json
+      description: Directly updates the balance of a wallet based on the requested
+        amount.
+      parameters:
+      - description: Update Balance Payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/wallet.UpdateWalletBalanceRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Balance updated successfully
+          schema:
+            $ref: '#/definitions/wallet.UpdateWalletBalanceResponse'
+        "400":
+          description: Bad Request (Invalid payload, insufficient balance, or capacity
+            limit)
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Wallet Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "405":
+          description: Method Not Allowed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Modify wallet balance
+      tags:
+      - Wallet
+swagger: "2.0"

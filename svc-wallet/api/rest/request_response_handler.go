@@ -24,6 +24,19 @@ func (c *WalletController) WalletHandler(w http.ResponseWriter, r *http.Request)
 }
 
 // createWallet handler
+
+// CreateWallet handles the creation of a new wallet.
+// @Summary      Create a new wallet
+// @Description  Validates the incoming payload and creates a new wallet associated with a phone number.
+// @Tags         Wallet
+// @Accept       json
+// @Produce      json
+// @Param        request  body      wallet.CreateWalletRequest  true  "Create Wallet Payload"
+// @Success      201      {object}  wallet.CreateWalletResponse "Wallet created successfully"
+// @Failure      400      {object}  map[string]string           "Bad Request (Invalid payload or data)"
+// @Failure      409      {object}  map[string]string           "Conflict (Duplicate phone number)"
+// @Failure      500      {object}  map[string]string           "Internal Server Error"
+// @Router       /wallet [post]
 func (c *WalletController) CreateWallet(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	// extract the context and the logger
@@ -75,6 +88,19 @@ func (c *WalletController) CreateWallet(w http.ResponseWriter, r *http.Request) 
 }
 
 // get wallet handler
+
+// GetWallet retrieves an existing wallet by phone number.
+// @Summary      Retrieve a wallet
+// @Description  Fetches the wallet details using the provided phone number query parameter.
+// @Tags         Wallet
+// @Accept       json
+// @Produce      json
+// @Param        phone_number  query     string  true  "Phone number (include country code, e.g., +123456789)"
+// @Success      200           {object}  wallet.GetWalletResponse "Wallet retrieved successfully"
+// @Failure      400           {object}  map[string]string        "Bad Request (Invalid phone number format)"
+// @Failure      404           {object}  map[string]string        "Wallet Not Found"
+// @Failure      500           {object}  map[string]string        "Internal Server Error"
+// @Router       /wallet [get]
 func (c *WalletController) GetWallet(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
@@ -118,6 +144,20 @@ func (c *WalletController) GetWallet(w http.ResponseWriter, r *http.Request) {
 }
 
 // modify wallet balance handler
+
+// ModifyWalletBalance updates the balance of an existing wallet.
+// @Summary      Modify wallet balance
+// @Description  Directly updates the balance of a wallet based on the requested amount.
+// @Tags         Wallet
+// @Accept       json
+// @Produce      json
+// @Param        request  body      wallet.UpdateWalletBalanceRequest  true  "Update Balance Payload"
+// @Success      200      {object}  wallet.UpdateWalletBalanceResponse "Balance updated successfully"
+// @Failure      400      {object}  map[string]string                  "Bad Request (Invalid payload, insufficient balance, or capacity limit)"
+// @Failure      404      {object}  map[string]string                  "Wallet Not Found"
+// @Failure      405      {object}  map[string]string                  "Method Not Allowed"
+// @Failure      500      {object}  map[string]string                  "Internal Server Error"
+// @Router       /wallet/balance [patch]
 func (c *WalletController) ModifyWalletBalance(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
