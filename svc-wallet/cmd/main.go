@@ -37,7 +37,7 @@ func main() {
 
 	// load .ENV file
 	if err := godotenv.Load(".ENV"); err != nil {
-		logger.Log.Warn().Err(err).Msg("Error loading .ENV file") // because when using docker env variables will be injected
+		logger.Log.Info().Msg("No .ENV file found, relying on os environment") // because when using docker env variables will be injected
 	}
 
 	// coneect the port

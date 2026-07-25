@@ -24,7 +24,6 @@ func InitLogger(serviceName string) {
 
 // Ctx extracts the OpenTelemetry Trace ID from the context and attaches it to the logger.
 // this is for the handlers to know which req is beaing processed by its trace id and span id
-
 func Ctx(ctx context.Context) zerolog.Logger {
 	spanContext := trace.SpanFromContext(ctx).SpanContext() // pass the contetx of the req
 

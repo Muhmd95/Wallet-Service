@@ -63,12 +63,11 @@ func (c *WalletController) CreateWallet(w http.ResponseWriter, r *http.Request) 
 	createResponse, err := c.service.CreateWallet(ctx, &reqData)
 	if err != nil {
 		if errors.Is(err, wallet.ErrDuplicatePhone) { // dont leak database errors
-			log.Warn().Str("phone_number", reqData.PhoneNumber).Msg("Duplicate wallet creation attempt")
+			//log.Warn().Str("phone_number", reqData.PhoneNumber).Msg("Duplicate wallet creation attempt")
 			respondWithError(w, http.StatusConflict, err.Error())
 			return
 		}
-
-		log.Error().Err(err).Msg("Failed to create wallet")
+		//log.Error().Err(err).Msg("Failed to create wallet")
 		respondWithError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
@@ -118,14 +117,16 @@ func (c *WalletController) GetWallet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Info().Str("phone_number", phoneNumber).Msg("Retrieving wallet by phone number")
+
 	getResponse, err := c.service.GetWalletByPhoneNumber(ctx, phoneNumber)
 	if err != nil {
 		if errors.Is(err, wallet.ErrWalletNotFound) { // dont leak database errors
-			log.Warn().Err(err).Str("phone_number", phoneNumber).Msg("Failed to get wallet by phone number")
+			//log.Warn().Err(err).Str("phone_number", phoneNumber).Msg("Failed to get wallet by phone number")
 			respondWithError(w, http.StatusNotFound, err.Error())
 			return
 		}
-		log.Error().Err(err).Msg("Failed to get wallet")
+		//log.Error().Err(err).Msg("Failed to get wallet")
 		respondWithError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
@@ -170,10 +171,15 @@ func (c *WalletController) ModifyWalletBalance(w http.ResponseWriter, r *http.Re
 	}
 
 	var reqData wallet.UpdateWalletBalanceRequest
-
 	if err := json.NewDecoder(r.Body).Decode(&reqData); err != nil {
 		log.Warn().Err(err).Msg("Invalid request payload")
 		respondWithError(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	if reqData.Amount == 0 {
+		log.Warn().Msg("Update amount must be not equal to zero")
+		respondWithError(w, http.StatusBadRequest, "Update amount must be not equal to zero")
 		return
 	}
 
@@ -184,22 +190,20 @@ func (c *WalletController) ModifyWalletBalance(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	log.Info().Str("phone_number", reqData.PhoneNumber).Int64("amount", reqData.Amount).Msg("Modifying wallet balance")
+
 	modifyResponse, err := c.service.ModifyWalletBalance(ctx, reqData.PhoneNumber, reqData.Amount)
 	if err != nil {
 		if errors.Is(err, wallet.ErrWalletNotFound) {
-			log.Warn().Str("phone_number", reqData.PhoneNumber).Msg("Wallet not found")
+			//log.Warn().Str("phone_number", reqData.PhoneNumber).Msg("Wallet not found")
 			respondWithError(w, http.StatusNotFound, err.Error())
 			return
-		} else if errors.Is(err, wallet.ErrInsufficientBalance) {
-			log.Warn().Str("phone_number", reqData.PhoneNumber).Msg("Insufficient balance")
-			respondWithError(w, http.StatusBadRequest, err.Error())
-			return
-		} else if errors.Is(err, wallet.ErrExceedsMaxBalance) {
-			log.Warn().Str("phone_number", reqData.PhoneNumber).Msg("Deposit exceeds maximum wallet capacity")
+		} else if errors.Is(err, wallet.ErrInsufficientBalance) || errors.Is(err, wallet.ErrExceedsMaxBalance) {
+			//log.Warn().Str("phone_number", reqData.PhoneNumber).Msg("Insufficient balance")
 			respondWithError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		log.Error().Err(err).Msg("Failed to modify wallet balance")
+		//log.Error().Err(err).Msg("Failed to modify wallet balance")
 		respondWithError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}

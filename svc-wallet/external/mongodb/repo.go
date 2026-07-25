@@ -10,6 +10,7 @@ import (
 
 	//project imports
 	"svc-wallet/internal/wallet"
+	"svc-wallet/util/logger"
 )
 
 type mongoRepository struct {
@@ -20,6 +21,7 @@ type mongoRepository struct {
 //
 //	returns a repository interface (to make the service layer interact only with the interface functions)
 func NewWalletRepository(ctx context.Context, db *mongo.Database) (wallet.Repository, error) {
+	log := logger.Ctx(ctx)
 	coll := db.Collection("wallets") // this is the collection in the mongo database where the wallets are stored
 	// configure the phone number to be unique
 	_, err := coll.Indexes().CreateOne(ctx, mongo.IndexModel{ // creating an index on phnumber, passing ctx to track the time
@@ -30,6 +32,7 @@ func NewWalletRepository(ctx context.Context, db *mongo.Database) (wallet.Reposi
 
 	if err != nil {
 		// Return the error to main.go so it can decide how to handle the failure
+		log.Error().Err(err).Msg("Failed to create unique index on phone_number (from repo layer)")
 		return nil, err
 	}
 	return &mongoRepository{collection: coll}, nil // return the mongoRepository struct with the collection (this is a repository)
@@ -37,13 +40,16 @@ func NewWalletRepository(ctx context.Context, db *mongo.Database) (wallet.Reposi
 }
 
 func (r *mongoRepository) CreateWallet(ctx context.Context, w *wallet.Wallet) error {
+	log := logger.Ctx(ctx)
 	result, err := r.collection.InsertOne(ctx, w) // this is the method that
 	// will insert the wallet into the collection in the mongo database and update the wallet
 	// object with the generated ID
 	if err != nil {
 		if mongo.IsDuplicateKeyError(err) {
-			return wallet.ErrDuplicatePhone // return the domain error for duplicate phone number
+			// service will handle this
+			return wallet.ErrDuplicatePhone // return the domain error for duplicate phone number 
 		}
+		log.Error().Err(err).Msg("Failed to insert wallet (from repo layer)")
 		return err // return any other error
 	}
 	w.ID = result.InsertedID.(primitive.ObjectID) // update the wallet object with the generated ID
@@ -51,12 +57,14 @@ func (r *mongoRepository) CreateWallet(ctx context.Context, w *wallet.Wallet) er
 }
 
 func (r *mongoRepository) GetWalletByPhoneNumber(ctx context.Context, phoneNumber string) (*wallet.Wallet, error) {
+	log := logger.Ctx(ctx)
 	var resWallet wallet.Wallet
 	err := r.collection.FindOne(ctx, bson.M{"phone_number": phoneNumber}).Decode(&resWallet)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, wallet.ErrWalletNotFound // return the domain error for wallet not found
 		}
+		log.Error().Err(err).Msg("Failed to find wallet by phone number (from repo layer)")
 		return nil, err // return any other error
 	}
 	return &resWallet, nil
@@ -64,6 +72,7 @@ func (r *mongoRepository) GetWalletByPhoneNumber(ctx context.Context, phoneNumbe
 
 // may be refactored in phase 2 to use transactions and atomic operations
 func (r *mongoRepository) UpdateWalletBalance(ctx context.Context, phoneNumber string, amount int64) (*wallet.Wallet, error) {
+	log := logger.Ctx(ctx)
 	// this is the method that will update the balance of the wallet in the collection in the mongo database
 	// i will check the business logic before in the service layer
 	filter := bson.M{"phone_number": phoneNumber} // the filter
@@ -77,6 +86,7 @@ func (r *mongoRepository) UpdateWalletBalance(ctx context.Context, phoneNumber s
 		if err == mongo.ErrNoDocuments {
 			return nil, wallet.ErrWalletNotFound // return the domain error for wallet not found
 		}
+		log.Error().Err(err).Msg("Failed to update the wallet balance (from repo layer)")
 		return nil, err // return any other error
 	}
 	return &updatedWallet, nil

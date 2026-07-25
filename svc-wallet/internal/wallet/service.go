@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"time"
+	"svc-wallet/util/logger"
 )
 
 // any validation of thre request should be done in the handler and not in the service layer
@@ -17,6 +18,7 @@ func NewService(repo Repository) *Service {
 }
 
 func (s *Service) CreateWallet(ctx context.Context, req *CreateWalletRequest) (*CreateWalletResponse, error) {
+	log := logger.Ctx(ctx)
 	// the request is validated in the handler
 
 	wallet := &Wallet{
@@ -30,6 +32,9 @@ func (s *Service) CreateWallet(ctx context.Context, req *CreateWalletRequest) (*
 
 	err := s.repo.CreateWallet(ctx, wallet)
 	if err != nil {
+		if err == ErrDuplicatePhone {
+			log.Warn().Err(err).Str("phone_number", req.PhoneNumber).Msg("Duplicate wallet creation attempt (from service layer)")
+		}
 		return nil, err
 	}
 
@@ -44,10 +49,13 @@ func (s *Service) CreateWallet(ctx context.Context, req *CreateWalletRequest) (*
 }
 
 func (s *Service) GetWalletByPhoneNumber(ctx context.Context, phoneNumber string) (*GetWalletResponse, error) {
+	log := logger.Ctx(ctx)
 
 	wallet, err := s.repo.GetWalletByPhoneNumber(ctx, phoneNumber)
 	if err != nil {
-
+		if err == ErrWalletNotFound {
+			log.Warn().Err(err).Str("phone_number", phoneNumber).Msg("Wallet not found (from service layer)")
+		}
 		return nil, err
 	}
 
@@ -66,23 +74,34 @@ func (s *Service) GetWalletByPhoneNumber(ctx context.Context, phoneNumber string
 // need to be refacoted in phase 2
 func (s *Service) ModifyWalletBalance(ctx context.Context, phoneNumber string, amount int64) (*UpdateWalletBalanceResponse, error) {
 
+	log := logger.Ctx(ctx)
+
 	wallet, err := s.repo.GetWalletByPhoneNumber(ctx, phoneNumber)
 	if err != nil {
+		if err == ErrWalletNotFound {
+			log.Warn().Err(err).Str("phone_number", phoneNumber).Msg("Wallet not found (from service layer)")
+		}
 		return nil, err
 	}
 
 	if amount > 0 {
 		// If the difference between the max limit and current balance is smaller than the amount, it will overflow
 		if math.MaxInt64-wallet.Balance < amount {
+			err = ErrExceedsMaxBalance
+			log.Warn().Err(err).Str("phone_number", phoneNumber).Msg("Exceeds max balance limit (from service layer)")
 			return nil, ErrExceedsMaxBalance // return the domain error for exceeding max balance
 		}
 	}
 
 	if wallet.Balance+amount < 0 {
+		log.Warn().Err(err).Str("phone_number", phoneNumber).Msg("Insufficient balance (from service layer)")
 		return nil, ErrInsufficientBalance // return the domain error for insufficient balance
 	}
 	result, err := s.repo.UpdateWalletBalance(ctx, phoneNumber, amount)
 	if err != nil {
+		if err == ErrWalletNotFound {
+			log.Warn().Err(err).Str("phone_number", phoneNumber).Msg("Wallet not found (from service layer)")
+		}
 		return nil, err
 	}
 
