@@ -4,24 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strings"
 
 	// paths from project root:
 	"svc-wallet/internal/wallet"
 	"svc-wallet/util/logger"
 )
-
-// WalletController handles HTTP requests related to wallet operations.
-func (c *WalletController) WalletHandler(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodPost:
-		c.CreateWallet(w, r)
-	case http.MethodGet:
-		c.GetWallet(w, r)
-	default:
-		respondWithError(w, http.StatusMethodNotAllowed, "Method not allowed")
-	}
-}
 
 // createWallet handler
 
@@ -42,6 +29,12 @@ func (c *WalletController) CreateWallet(w http.ResponseWriter, r *http.Request) 
 	// extract the context and the logger
 	ctx := r.Context()
 	log := logger.Ctx(ctx)
+
+	if r.Method != http.MethodPost {
+		log.Warn().Msg("Method not allowed")
+		respondWithError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
 
 	var reqData wallet.CreateWalletRequest
 	decoder := json.NewDecoder(r.Body)
@@ -72,15 +65,17 @@ func (c *WalletController) CreateWallet(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-
-	encoder := json.NewEncoder(w)
-	if err := encoder.Encode(createResponse); err != nil {
-		log.Error().Err(err).Msg("Failed to encode response")
-		respondWithError(w, http.StatusInternalServerError, "Failed to encode response")
+	responseData, err := json.Marshal(createResponse)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to marshal response")
+		respondWithError(w, http.StatusInternalServerError, "Failed to marshal response")
 		return
 	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Location", "/v1/wallet/"+reqData.PhoneNumber) // set the location for the new wallet
+	w.WriteHeader(http.StatusCreated)
+	w.Write(responseData)
 
 	log.Info().Str("wallet_id", createResponse.WalletID).Msg("Wallet created successfully")
 
@@ -94,23 +89,27 @@ func (c *WalletController) CreateWallet(w http.ResponseWriter, r *http.Request) 
 // @Tags         Wallet
 // @Accept       json
 // @Produce      json
-// @Param        phone_number  query     string  true  "Phone number (include country code, e.g., +123456789)"
+// @Param        phone_number  path     string  true  "Phone number (include country code, e.g., +123456789)"
 // @Success      200           {object}  wallet.GetWalletResponse "Wallet retrieved successfully"
 // @Failure      400           {object}  map[string]string        "Bad Request (Invalid phone number format)"
 // @Failure      404           {object}  map[string]string        "Wallet Not Found"
 // @Failure      500           {object}  map[string]string        "Internal Server Error"
-// @Router       /wallet [get]
+// @Router       /wallet/{phone_number} [get]
 func (c *WalletController) GetWallet(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	ctx := r.Context()
 	log := logger.Ctx(ctx)
 
-	phoneNumber := r.URL.Query().Get("phone_number")
-	// + in the url is converted to space so i will replace it with + again
-	phoneNumber = strings.ReplaceAll(phoneNumber, " ", "+")
+	if r.Method != http.MethodGet {
+		log.Warn().Msg("Method not allowed")
+		respondWithError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
 
-	err := wallet.ValidatePhoneNumber(phoneNumber)
+	phoneNumber := r.PathValue("phone_number")
+
+	err := wallet.ValidatePhoneNumber(&phoneNumber)
 	if err != nil {
 		log.Warn().Err(err).Msg("Invalid phone number")
 		respondWithError(w, http.StatusBadRequest, err.Error())
@@ -131,14 +130,15 @@ func (c *WalletController) GetWallet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	encoder := json.NewEncoder(w)
-	if err := encoder.Encode(getResponse); err != nil {
-		log.Error().Err(err).Msg("Failed to encode response")
-		respondWithError(w, http.StatusInternalServerError, "Failed to encode response")
+	responseData, err := json.Marshal(getResponse)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to marshal response")
+		respondWithError(w, http.StatusInternalServerError, "Failed to marshal response")
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(responseData)
 
 	log.Info().Str("phone_number", phoneNumber).Msg("Get wallet response sent successfully")
 
@@ -183,7 +183,7 @@ func (c *WalletController) ModifyWalletBalance(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	err := wallet.ValidatePhoneNumber(reqData.PhoneNumber)
+	err := wallet.ValidatePhoneNumber(&reqData.PhoneNumber)
 	if err != nil {
 		log.Warn().Err(err).Msg("Invalid phone number")
 		respondWithError(w, http.StatusBadRequest, err.Error())
@@ -208,15 +208,15 @@ func (c *WalletController) ModifyWalletBalance(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	encoder := json.NewEncoder(w)
-	if err := encoder.Encode(modifyResponse); err != nil {
-		log.Error().Err(err).Msg("Failed to encode response")
-		respondWithError(w, http.StatusInternalServerError, "Failed to encode response")
+	responseData, err := json.Marshal(modifyResponse)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to marshal response")
+		respondWithError(w, http.StatusInternalServerError, "Failed to marshal response")
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(responseData)
 
 	log.Info().Str("phone_number", reqData.PhoneNumber).Msg("Wallet balance modification response sent successfully")
 

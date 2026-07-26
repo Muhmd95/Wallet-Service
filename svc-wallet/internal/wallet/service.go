@@ -3,8 +3,8 @@ package wallet
 import (
 	"context"
 	"math"
-	"time"
 	"svc-wallet/util/logger"
+	"time"
 )
 
 // any validation of thre request should be done in the handler and not in the service layer
@@ -87,14 +87,13 @@ func (s *Service) ModifyWalletBalance(ctx context.Context, phoneNumber string, a
 	if amount > 0 {
 		// If the difference between the max limit and current balance is smaller than the amount, it will overflow
 		if math.MaxInt64-wallet.Balance < amount {
-			err = ErrExceedsMaxBalance
-			log.Warn().Err(err).Str("phone_number", phoneNumber).Msg("Exceeds max balance limit (from service layer)")
+			log.Warn().Err(ErrExceedsMaxBalance).Str("phone_number", phoneNumber).Msg("Exceeds max balance limit (from service layer)")
 			return nil, ErrExceedsMaxBalance // return the domain error for exceeding max balance
 		}
 	}
 
 	if wallet.Balance+amount < 0 {
-		log.Warn().Err(err).Str("phone_number", phoneNumber).Msg("Insufficient balance (from service layer)")
+		log.Warn().Err(ErrInsufficientBalance).Str("phone_number", phoneNumber).Msg("Insufficient balance (from service layer)")
 		return nil, ErrInsufficientBalance // return the domain error for insufficient balance
 	}
 	result, err := s.repo.UpdateWalletBalance(ctx, phoneNumber, amount)

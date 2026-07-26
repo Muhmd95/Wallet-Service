@@ -68,45 +68,6 @@ info:
   version: "1.0"
 paths:
   /wallet:
-    get:
-      consumes:
-      - application/json
-      description: Fetches the wallet details using the provided phone number query
-        parameter.
-      parameters:
-      - description: Phone number (include country code, e.g., +123456789)
-        in: query
-        name: phone_number
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Wallet retrieved successfully
-          schema:
-            $ref: '#/definitions/wallet.GetWalletResponse'
-        "400":
-          description: Bad Request (Invalid phone number format)
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Wallet Not Found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Retrieve a wallet
-      tags:
-      - Wallet
     post:
       consumes:
       - application/json
@@ -145,6 +106,46 @@ paths:
               type: string
             type: object
       summary: Create a new wallet
+      tags:
+      - Wallet
+  /wallet/{phone_number}:
+    get:
+      consumes:
+      - application/json
+      description: Fetches the wallet details using the provided phone number query
+        parameter.
+      parameters:
+      - description: Phone number (include country code, e.g., +123456789)
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Wallet retrieved successfully
+          schema:
+            $ref: '#/definitions/wallet.GetWalletResponse'
+        "400":
+          description: Bad Request (Invalid phone number format)
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Wallet Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Retrieve a wallet
       tags:
       - Wallet
   /wallet/balance:

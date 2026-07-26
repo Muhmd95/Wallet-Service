@@ -10,63 +10,6 @@
     "basePath": "/v1",
     "paths": {
         "/wallet": {
-            "get": {
-                "description": "Fetches the wallet details using the provided phone number query parameter.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Wallet"
-                ],
-                "summary": "Retrieve a wallet",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Phone number (include country code, e.g., +123456789)",
-                        "name": "phone_number",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Wallet retrieved successfully",
-                        "schema": {
-                            "$ref": "#/definitions/wallet.GetWalletResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request (Invalid phone number format)",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Wallet Not Found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            },
             "post": {
                 "description": "Validates the incoming payload and creates a new wallet associated with a phone number.",
                 "consumes": [
@@ -178,6 +121,65 @@
                     },
                     "405": {
                         "description": "Method Not Allowed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wallet/{phone_number}": {
+            "get": {
+                "description": "Fetches the wallet details using the provided phone number query parameter.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Wallet"
+                ],
+                "summary": "Retrieve a wallet",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Phone number (include country code, e.g., +123456789)",
+                        "name": "phone_number",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Wallet retrieved successfully",
+                        "schema": {
+                            "$ref": "#/definitions/wallet.GetWalletResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request (Invalid phone number format)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Wallet Not Found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
