@@ -7,11 +7,14 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-
+	"google.golang.org/grpc"
+	"net"
 	"github.com/joho/godotenv"
+	walletv1 "github.com/Muhmd95/Contracts/wallet/v1"
 
 	// project paths
 	"svc-wallet/api/rest"
+	"svc-wallet/api/grpcserver"
 	"svc-wallet/external/mongodb"
 	"svc-wallet/internal/wallet"
 	"svc-wallet/util/logger"
@@ -88,6 +91,7 @@ func main() {
 	// Initialize the REST API handler
 	controller := rest.NewWalletController(service)
 
+
 	// create a server mux
 	mux := http.NewServeMux()
 	// reguster the routes
@@ -106,11 +110,32 @@ func main() {
 	//}
 
 	// 1. Run the server in a separate goroutine so it doesn't block the rest of the code
-	// 1. Run the server in a goroutine
 	go func() {
 		logger.Log.Info().Str("port", port).Msg("Server is listening")
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Log.Fatal().Err(err).Msg("Server crashed")
+		}
+	}()
+
+	// run the grpc server in a separate goroutine
+	grpcPort := os.Getenv("GRPC_SERVER_PORT")
+	if grpcPort == "" {
+		grpcPort = "50051" // default grpc port
+	}
+	// Initialize the gRPC server
+	grpcServer := grpc.NewServer()
+	myWalletServer := grpcserver.NewWalletServer(service)
+	go func() {
+		listener, err := net.Listen("tcp", ":"+grpcPort)
+		if err != nil {
+			logger.Log.Fatal().Err(err).Msg("Failed to listen on gRPC port")
+		}
+		
+		// Register the gRPC server
+		walletv1.RegisterWalletServiceServer(grpcServer, myWalletServer)
+		logger.Log.Info().Str("port", grpcPort).Msg("gRPC server is listening")
+		if err := grpcServer.Serve(listener); err != nil {
+			logger.Log.Fatal().Err(err).Msg("gRPC server crashed")
 		}
 	}()
 
@@ -129,6 +154,9 @@ func main() {
 	if err := server.Shutdown(ctx); err != nil {
 		logger.Log.Fatal().Err(err).Msg("Server forced to shutdown")
 	}
+
+	// stop the grpc server gracefully
+	grpcServer.GracefulStop()
 
 	logger.Log.Info().Msg("svc-wallet exited safely")
 }
