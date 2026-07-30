@@ -22,5 +22,5 @@ WORKDIR /app
 
 COPY --from=builder /app/wallet-service .
 
-EXPOSE 8000
+EXPOSE 8000 50051
 CMD ["./wallet-service"]
