@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 	"google.golang.org/grpc"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"net"
 	"github.com/joho/godotenv"
 	walletv1 "github.com/Muhmd95/Contracts/wallet/v1"
@@ -123,7 +124,10 @@ func main() {
 		grpcPort = "50051" // default grpc port
 	}
 	// Initialize the gRPC server
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(
+		grpc.StatsHandler(otelgrpc.NewServerHandler()), // adding the grpc interceptor 
+		// to extract the trace id from the incoming requests
+	)
 	myWalletServer := grpcserver.NewWalletServer(service)
 	go func() {
 		listener, err := net.Listen("tcp", ":"+grpcPort)
