@@ -5,6 +5,7 @@ import (
 	"math"
 	"svc-wallet/util/logger"
 	"time"
+	"errors"
 )
 
 // any validation of thre request should be done in the handler and not in the service layer
@@ -32,7 +33,7 @@ func (s *Service) CreateWallet(ctx context.Context, req *CreateWalletRequest) (*
 
 	err := s.repo.CreateWallet(ctx, wallet)
 	if err != nil {
-		if err == ErrDuplicatePhone {
+		if errors.Is(err, ErrDuplicatePhone) {
 			log.Warn().Err(err).Str("phone_number", req.PhoneNumber).Msg("Duplicate wallet creation attempt (from service layer)")
 		}
 		return nil, err
@@ -53,7 +54,7 @@ func (s *Service) GetWalletByPhoneNumber(ctx context.Context, phoneNumber string
 
 	wallet, err := s.repo.GetWalletByPhoneNumber(ctx, phoneNumber)
 	if err != nil {
-		if err == ErrWalletNotFound {
+		if errors.Is(err, ErrWalletNotFound) {
 			log.Warn().Err(err).Str("phone_number", phoneNumber).Msg("Wallet not found (from service layer)")
 		}
 		return nil, err
@@ -78,7 +79,7 @@ func (s *Service) ModifyWalletBalance(ctx context.Context, phoneNumber string, a
 
 	wallet, err := s.repo.GetWalletByPhoneNumber(ctx, phoneNumber)
 	if err != nil {
-		if err == ErrWalletNotFound {
+		if errors.Is(err, ErrWalletNotFound) {
 			log.Warn().Err(err).Str("phone_number", phoneNumber).Msg("Wallet not found (from service layer)")
 		}
 		return nil, err
@@ -98,7 +99,7 @@ func (s *Service) ModifyWalletBalance(ctx context.Context, phoneNumber string, a
 	}
 	result, err := s.repo.UpdateWalletBalance(ctx, phoneNumber, amount)
 	if err != nil {
-		if err == ErrWalletNotFound {
+		if errors.Is(err, ErrWalletNotFound) {
 			log.Warn().Err(err).Str("phone_number", phoneNumber).Msg("Wallet not found (from service layer)")
 		}
 		return nil, err

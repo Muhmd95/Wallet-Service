@@ -2,6 +2,7 @@ package mongodb
 
 import (
 	"context"
+	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -77,7 +78,7 @@ func (r *mongoRepository) UpdateWalletBalance(ctx context.Context, phoneNumber s
 	// i will check the business logic before in the service layer
 	filter := bson.M{"phone_number": phoneNumber} // the filter
 	// to decrease the balance pass amount as negative value
-	update := bson.M{"$inc": bson.M{"balance": amount}}                 // the update operation
+	update := bson.M{"$inc": bson.M{"balance": amount}, "$set": bson.M{"updated_at": time.Now()}}                 // the update operation
 	opts := options.FindOneAndUpdate().SetReturnDocument(options.After) // this is to return the updated document after the update
 	// findoneandupdate will return the updated wallet and prevents race conditions
 	var updatedWallet wallet.Wallet
