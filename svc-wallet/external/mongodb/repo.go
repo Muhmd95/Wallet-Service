@@ -43,12 +43,15 @@ func NewWalletRepository(ctx context.Context, db *mongo.Database) (wallet.Reposi
 func (r *mongoRepository) CreateWallet(ctx context.Context, w *wallet.Wallet) error {
 	log := logger.Ctx(ctx)
 	result, err := r.collection.InsertOne(ctx, w) // this is the method that
-	// will insert the wallet into the collection in the mongo database and update the wallet
-	// object with the generated ID
+	// will insert the wallet into the collection in the mongo database
+	// context is passed to know the timeout of therequest
+	// if the request takes too long it will be cancelled
+	//the time out of the request is embedded in the ctx
+	// beside ctx contains meta data
 	if err != nil {
 		if mongo.IsDuplicateKeyError(err) {
 			// service will handle this
-			return wallet.ErrDuplicatePhone // return the domain error for duplicate phone number 
+			return wallet.ErrDuplicatePhone // return the domain error for duplicate phone number
 		}
 		log.Error().Err(err).Msg("Failed to insert wallet (from repo layer)")
 		return err // return any other error
@@ -78,8 +81,8 @@ func (r *mongoRepository) UpdateWalletBalance(ctx context.Context, phoneNumber s
 	// i will check the business logic before in the service layer
 	filter := bson.M{"phone_number": phoneNumber} // the filter
 	// to decrease the balance pass amount as negative value
-	update := bson.M{"$inc": bson.M{"balance": amount}, "$set": bson.M{"updated_at": time.Now()}}                 // the update operation
-	opts := options.FindOneAndUpdate().SetReturnDocument(options.After) // this is to return the updated document after the update
+	update := bson.M{"$inc": bson.M{"balance": amount}, "$set": bson.M{"updated_at": time.Now()}} // the update operation
+	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)                           // this is to return the updated document after the update
 	// findoneandupdate will return the updated wallet and prevents race conditions
 	var updatedWallet wallet.Wallet
 	err := r.collection.FindOneAndUpdate(ctx, filter, update, opts).Decode(&updatedWallet)

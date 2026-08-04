@@ -2,20 +2,20 @@ package main
 
 import (
 	"context"
+	walletv1 "github.com/Muhmd95/Contracts/wallet/v1"
+	"github.com/joho/godotenv"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"google.golang.org/grpc"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
-	"google.golang.org/grpc"
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"net"
-	"github.com/joho/godotenv"
-	walletv1 "github.com/Muhmd95/Contracts/wallet/v1"
 
 	// project paths
-	"svc-wallet/api/rest"
 	"svc-wallet/api/grpcserver"
+	"svc-wallet/api/rest"
 	"svc-wallet/external/mongodb"
 	"svc-wallet/internal/wallet"
 	"svc-wallet/util/logger"
@@ -48,6 +48,12 @@ func main() {
 	port := os.Getenv("SERVER_PORT")
 	if port == "" {
 		port = "8000" // default port
+	}
+
+	// get the wallet grpc port
+	grpcPort := os.Getenv("GRPC_SERVER_PORT")
+	if grpcPort == "" {
+		grpcPort = "50051" // default grpc port
 	}
 
 	// get mongo uri
@@ -92,7 +98,6 @@ func main() {
 	// Initialize the REST API handler
 	controller := rest.NewWalletController(service)
 
-
 	// create a server mux
 	mux := http.NewServeMux()
 	// reguster the routes
@@ -119,13 +124,9 @@ func main() {
 	}()
 
 	// run the grpc server in a separate goroutine
-	grpcPort := os.Getenv("GRPC_SERVER_PORT")
-	if grpcPort == "" {
-		grpcPort = "50051" // default grpc port
-	}
 	// Initialize the gRPC server
 	grpcServer := grpc.NewServer(
-		grpc.StatsHandler(otelgrpc.NewServerHandler()), // adding the grpc interceptor 
+		grpc.StatsHandler(otelgrpc.NewServerHandler()), // adding the grpc interceptor
 		// to extract the trace id from the incoming requests
 	)
 	myWalletServer := grpcserver.NewWalletServer(service)
@@ -134,7 +135,7 @@ func main() {
 		if err != nil {
 			logger.Log.Fatal().Err(err).Msg("Failed to listen on gRPC port")
 		}
-		
+
 		// Register the gRPC server
 		walletv1.RegisterWalletServiceServer(grpcServer, myWalletServer)
 		logger.Log.Info().Str("port", grpcPort).Msg("gRPC server is listening")
