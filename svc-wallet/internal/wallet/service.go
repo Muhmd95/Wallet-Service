@@ -22,16 +22,38 @@ func (s *Service) CreateWallet(ctx context.Context, req *CreateWalletRequest) (*
 	log := logger.Ctx(ctx)
 	// the request is validated in the handler
 
+	//  29011012345678
+	var year string
+	if req.NationalID[0] == '2' {
+		year = "19"
+	} else {
+		year = "20"
+	}
+	year+=req.NationalID[1:3]
+	month := req.NationalID[3:5]
+	day := req.NationalID[5:7]
+
+	birthDateStr := year+"-"+month+"-"+day
+
+	birthDate, err := time.Parse("2006-01-02", birthDateStr)
+	if err != nil {
+		log.Error().Err(err).Msg("Couldn't parse the birth date (from service layer)")
+		return nil, err
+	}
+
+
 	wallet := &Wallet{
 		PhoneNumber:  req.PhoneNumber,
 		OwnerName:    req.OwnerName,
 		CurrencyCode: req.CurrencyCode,
 		Balance:      0, // initial balance is 0
+		NationalID: req.NationalID,
+		BirthDate: birthDate,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
 
-	err := s.repo.CreateWallet(ctx, wallet)
+	err = s.repo.CreateWallet(ctx, wallet)
 	if err != nil {
 		if errors.Is(err, ErrDuplicatePhone) {
 			log.Warn().Err(err).Str("phone_number", req.PhoneNumber).Msg("Duplicate wallet creation attempt (from service layer)")
@@ -66,6 +88,8 @@ func (s *Service) GetWalletByPhoneNumber(ctx context.Context, phoneNumber string
 		OwnerName:    wallet.OwnerName,
 		CurrencyCode: wallet.CurrencyCode,
 		Balance:      wallet.Balance,
+		NationalID: wallet.NationalID,
+		BirthDate: wallet.BirthDate,
 		FamilyID:     nil, // this
 		//  will be implemented in the future when the family feature is added
 	}, nil

@@ -19,6 +19,8 @@ type Wallet struct {
 	Balance      int64               `bson:"balance"`
 	CurrencyCode string              `bson:"currency_code"`
 	FamilyID     *primitive.ObjectID `bson:"family_id,omitempty"` // a pointer because it can be null if the wallet is not part of a family
+	NationalID   string				 `bson:"national_id"`
+	BirthDate    time.Time			 `bson:"birth_date"`
 
 	// time stamps
 	CreatedAt time.Time `bson:"created_at"`
@@ -34,4 +36,6 @@ var (
 	ErrInvalidPhoneNumber  = errors.New("invalid phone number format")
 	ErrInsufficientBalance = errors.New("insufficient balance for the requested operation")
 	ErrExceedsMaxBalance   = errors.New("deposit exceeds maximum wallet capacity")
+	ErrInvalidNationalID   = errors.New("invalid national id format")
+
 )
