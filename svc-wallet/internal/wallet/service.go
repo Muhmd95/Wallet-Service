@@ -123,7 +123,7 @@ func (s *Service) GetWalletByID(ctx context.Context, walletID string) (*GetWalle
 }
 
 // need to be refacoted in phase 2
-func (s *Service) ModifyWalletBalance(ctx context.Context, phoneNumber string, amount int64) (*UpdateWalletBalanceResponse, error) {
+func (s *Service) ModifyWalletBalance(ctx context.Context, phoneNumber string, amount int64, refID string) (*UpdateWalletBalanceResponse, error) {
 
 	log := logger.Ctx(ctx)
 
@@ -136,7 +136,7 @@ func (s *Service) ModifyWalletBalance(ctx context.Context, phoneNumber string, a
 	}
 
 	// balance musnt exceed the wallet max or doesnt be below 0
-	result, err := s.repo.UpdateWalletBalance(ctx, phoneNumber, amount)
+	result, err := s.repo.UpdateWalletBalance(ctx, phoneNumber, amount, refID)
 	if err != nil {
 		if errors.Is(err, ErrExceedsMaxBalance) {
 			log.Warn().Err(err).Str("phone_number", phoneNumber).Msg("Wallet exceeds maximum balance (from service layer)")

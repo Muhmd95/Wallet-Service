@@ -28,6 +28,7 @@ func (s *WalletServer) ModifyBalance(ctx context.Context, req *walletv1.ModifyBa
 
 	amount := req.GetAmount()
 	phoneNumber := req.GetPhoneNumber()
+	refID := req.GetReferenceID()
 
 	if amount == 0 {
 		log.Warn().Msg("Update amount must be not equal to zero (from grpc server)")
@@ -44,7 +45,7 @@ func (s *WalletServer) ModifyBalance(ctx context.Context, req *walletv1.ModifyBa
 
 	log.Info().Str("phone_number", phoneNumber).Int64("amount", amount).Msg("Modifying wallet balance")
 
-	modifyResponse, err := s.service.ModifyWalletBalance(ctx, phoneNumber, amount)
+	modifyResponse, err := s.service.ModifyWalletBalance(ctx, phoneNumber, amount, refID)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to modify wallet balance (from grpc server)")
 		if errors.Is(err, wallet.ErrWalletNotFound) {

@@ -1,4 +1,4 @@
-
+package wallet
 // this is for future transfers
 // import (
 // 	"context"

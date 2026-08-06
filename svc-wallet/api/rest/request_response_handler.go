@@ -229,6 +229,13 @@ func (c *WalletController) ModifyWalletBalance(w http.ResponseWriter, r *http.Re
 		respondWithError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
+	refID := r.Header.Get("Idempotency-Key")
+
+	if refID == "" {
+		log.Warn().Msg("Missing Idempotency-Key header")
+		respondWithError(w, http.StatusBadRequest, "Missing Idempotency-Key header")
+		return
+	}
 
 	var reqData wallet.UpdateWalletBalanceRequest
 	if err := json.NewDecoder(r.Body).Decode(&reqData); err != nil {
@@ -252,7 +259,7 @@ func (c *WalletController) ModifyWalletBalance(w http.ResponseWriter, r *http.Re
 
 	log.Info().Str("phone_number", reqData.PhoneNumber).Int64("amount", reqData.Amount).Msg("Modifying wallet balance")
 
-	modifyResponse, err := c.service.ModifyWalletBalance(ctx, reqData.PhoneNumber, reqData.Amount)
+	modifyResponse, err := c.service.ModifyWalletBalance(ctx, reqData.PhoneNumber, reqData.Amount, refID)
 	if err != nil {
 		if errors.Is(err, wallet.ErrWalletNotFound) {
 			//log.Warn().Str("phone_number", reqData.PhoneNumber).Msg("Wallet not found")

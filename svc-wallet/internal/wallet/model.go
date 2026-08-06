@@ -22,6 +22,8 @@ type Wallet struct {
 	NationalID   string				 `bson:"national_id"`
 	BirthDate    time.Time			 `bson:"birth_date"`
 
+	ProcessedRefs []string 			 `bson:"processed_refs"`
+
 	// time stamps
 	CreatedAt time.Time `bson:"created_at"`
 	UpdatedAt time.Time `bson:"updated_at"`
