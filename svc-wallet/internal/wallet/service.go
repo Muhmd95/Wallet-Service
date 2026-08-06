@@ -11,6 +11,8 @@ import (
 
 type Service struct {
 	repo Repository // this is the repository layer that will be used to interact with the database
+	// txManager TxManager  
+	// this will be a structure for managing the multi step transactions that will contain a client of mongo
 }
 
 func NewService(repo Repository) *Service {
