@@ -75,8 +75,22 @@ func (r *mongoRepository) GetWalletByPhoneNumber(ctx context.Context, phoneNumbe
 func (r *mongoRepository) UpdateWalletBalance(ctx context.Context, phoneNumber string, amount int64) (*wallet.Wallet, error) {
 	log := logger.Ctx(ctx)
 	// this is the method that will update the balance of the wallet in the collection in the mongo database
-	// i will check the business logic before in the service layer
-	filter := bson.M{"phone_number": phoneNumber} // the filter
+	filter := bson.M{}
+	retError := wallet.ErrWalletNotFound
+	if amount > 0 {
+		filter = bson.M{
+		"phone_number": phoneNumber,
+		"balance": bson.M{"$lte": wallet.WalletMax - amount},
+		}
+		retError = wallet.ErrExceedsMaxBalance
+	} else {
+		filter = bson.M{
+		"phone_number": phoneNumber,
+		"balance": bson.M{"$gte": -amount},
+		}
+		retError = wallet.ErrInsufficientBalance
+	}
+	 // the filter
 	// to decrease the balance pass amount as negative value
 	update := bson.M{"$inc": bson.M{"balance": amount}, "$set": bson.M{"updated_at": time.Now()}}                 // the update operation
 	opts := options.FindOneAndUpdate().SetReturnDocument(options.After) // this is to return the updated document after the update
@@ -85,7 +99,7 @@ func (r *mongoRepository) UpdateWalletBalance(ctx context.Context, phoneNumber s
 	err := r.collection.FindOneAndUpdate(ctx, filter, update, opts).Decode(&updatedWallet)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			return nil, wallet.ErrWalletNotFound // return the domain error for wallet not found
+			return nil, retError // return the domain error for wallet not found
 		}
 		log.Error().Err(err).Msg("Failed to update the wallet balance (from repo layer)")
 		return nil, err // return any other error

@@ -29,10 +29,10 @@ func (s *WalletServer) ModifyBalance(ctx context.Context, req *walletv1.ModifyBa
 	amount := req.GetAmount()
 	phoneNumber := req.GetPhoneNumber()
 
-	// if amount == 0 {
-	// 	log.Warn().Msg("Update amount must be not equal to zero (from grpc server)")
-	// 	return nil, status.Error(codes.InvalidArgument, "Update amount must be not equal to zero")
-	// }
+	if amount == 0 {
+		log.Warn().Msg("Update amount must be not equal to zero (from grpc server)")
+		return nil, status.Error(codes.InvalidArgument, "Update amount must be not equal to zero")
+	}
 	// validation of amount is done in transactions service
 	
 

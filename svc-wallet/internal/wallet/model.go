@@ -39,3 +39,6 @@ var (
 	ErrInvalidNationalID   = errors.New("invalid national id format")
 	ErrInvalidWalletID	   = errors.New("invalid wallet id format")
 )
+
+// wallet max
+const WalletMax int64 = 9000000000000000
