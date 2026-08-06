@@ -96,6 +96,31 @@ func (s *Service) GetWalletByPhoneNumber(ctx context.Context, phoneNumber string
 
 }
 
+func (s *Service) GetWalletByID(ctx context.Context, walletID string) (*GetWalletResponse, error) {
+	log := logger.Ctx(ctx)
+
+	wallet, err := s.repo.GetWalletByID(ctx, walletID)
+	if err != nil {
+		if errors.Is(err, ErrWalletNotFound) {
+			log.Warn().Err(err).Str("wallet_id", walletID).Msg("Wallet not found (from service layer)")
+		}
+		return nil, err
+	}
+
+	return &GetWalletResponse{
+		WalletID:     wallet.ID.Hex(),
+		PhoneNumber:  wallet.PhoneNumber,
+		OwnerName:    wallet.OwnerName,
+		CurrencyCode: wallet.CurrencyCode,
+		Balance:      wallet.Balance,
+		NationalID: wallet.NationalID,
+		BirthDate: wallet.BirthDate,
+		FamilyID:     nil, // this
+		//  will be implemented in the future when the family feature is added
+	}, nil
+
+}
+
 // need to be refacoted in phase 2
 func (s *Service) ModifyWalletBalance(ctx context.Context, phoneNumber string, amount int64) (*UpdateWalletBalanceResponse, error) {
 

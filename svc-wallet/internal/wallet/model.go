@@ -37,5 +37,5 @@ var (
 	ErrInsufficientBalance = errors.New("insufficient balance for the requested operation")
 	ErrExceedsMaxBalance   = errors.New("deposit exceeds maximum wallet capacity")
 	ErrInvalidNationalID   = errors.New("invalid national id format")
-
+	ErrInvalidWalletID	   = errors.New("invalid wallet id format")
 )

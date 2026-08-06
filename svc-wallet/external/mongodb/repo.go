@@ -93,3 +93,23 @@ func (r *mongoRepository) UpdateWalletBalance(ctx context.Context, phoneNumber s
 	return &updatedWallet, nil
 
 }
+
+func (r *mongoRepository) GetWalletByID(ctx context.Context, walletID string) (*wallet.Wallet, error) {
+	log := logger.Ctx(ctx)
+	var resWallet wallet.Wallet
+	walletObjID, err := primitive.ObjectIDFromHex(walletID)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to convert from string to objectID (from repo layer)")
+		return nil, wallet.ErrInvalidWalletID 
+	} 
+	err = r.collection.FindOne(ctx, bson.M{"_id": walletObjID}).Decode(&resWallet)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, wallet.ErrWalletNotFound // return the domain error for wallet not found
+		}
+		log.Error().Err(err).Msg("Failed to find wallet by wallet id(from repo layer)")
+		return nil, err // return any other error
+	}
+	return &resWallet, nil
+}
+

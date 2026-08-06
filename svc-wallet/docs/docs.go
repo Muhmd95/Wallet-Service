@@ -146,7 +146,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/wallet/{phone_number}": {
+        "/wallet/phone/{phone_number}": {
             "get": {
                 "description": "Fetches the wallet details using the provided phone number query parameter.",
                 "consumes": [
@@ -162,7 +162,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Phone number (include country code, e.g., +123456789)",
+                        "description": "Phone number",
                         "name": "phone_number",
                         "in": "path",
                         "required": true
@@ -204,6 +204,65 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/wallet/{wallet_id}": {
+            "get": {
+                "description": "Fetches the wallet details using the provided phone number query parameter.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Wallet"
+                ],
+                "summary": "Retrieve a wallet",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Wallet ID",
+                        "name": "wallet_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Wallet retrieved successfully",
+                        "schema": {
+                            "$ref": "#/definitions/wallet.GetWalletResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request (Invalid wallet ID format)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Wallet Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -215,6 +274,9 @@ const docTemplate = `{
                 },
                 "family_id": {
                     "description": "a pointer because it can be null if the wallet is not part of a family",
+                    "type": "string"
+                },
+                "national_id": {
                     "type": "string"
                 },
                 "owner_name": {
@@ -249,10 +311,16 @@ const docTemplate = `{
                 "balance": {
                     "type": "integer"
                 },
+                "birth_date": {
+                    "type": "string"
+                },
                 "currency_code": {
                     "type": "string"
                 },
                 "family_id": {
+                    "type": "string"
+                },
+                "national_id": {
                     "type": "string"
                 },
                 "owner_name": {
