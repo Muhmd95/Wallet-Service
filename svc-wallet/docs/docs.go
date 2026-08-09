@@ -98,6 +98,13 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/wallet.UpdateWalletBalanceRequest"
                         }
+                    },
+                    {
+                        "type": "string",
+                        "description": "Unique key to prevent duplicate balance modifications",
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": true
                     }
                 ],
                 "responses": {
@@ -127,6 +134,15 @@ const docTemplate = `{
                     },
                     "405": {
                         "description": "Method Not Allowed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Duplicate request (idempotency key already processed)",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {

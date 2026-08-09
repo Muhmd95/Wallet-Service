@@ -167,6 +167,11 @@ paths:
         required: true
         schema:
           $ref: '#/definitions/wallet.UpdateWalletBalanceRequest'
+      - description: Unique key to prevent duplicate balance modifications
+        in: header
+        name: Idempotency-Key
+        required: true
+        type: string
       produces:
       - application/json
       responses:
@@ -189,6 +194,12 @@ paths:
             type: object
         "405":
           description: Method Not Allowed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Duplicate request (idempotency key already processed)
           schema:
             additionalProperties:
               type: string

@@ -213,11 +213,13 @@ func (c *WalletController) GetWalletByID(w http.ResponseWriter, r *http.Request)
 // @Accept       json
 // @Produce      json
 // @Param        request  body      wallet.UpdateWalletBalanceRequest  true  "Update Balance Payload"
+// @Param        Idempotency-Key  header    string  true  "Unique key to prevent duplicate balance modifications"
 // @Success      200      {object}  wallet.UpdateWalletBalanceResponse "Balance updated successfully"
 // @Failure      400      {object}  map[string]string                  "Bad Request (Invalid payload, insufficient balance, or capacity limit)"
 // @Failure      404      {object}  map[string]string                  "Wallet Not Found"
 // @Failure      405      {object}  map[string]string                  "Method Not Allowed"
 // @Failure      500      {object}  map[string]string                  "Internal Server Error"
+// @Failure      409              {object}  map[string]string  "Duplicate request (idempotency key already processed)"
 // @Router       /wallet/balance [patch]
 func (c *WalletController) ModifyWalletBalance(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
