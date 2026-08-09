@@ -65,3 +65,23 @@ func (s *WalletServer) ModifyBalance(ctx context.Context, req *walletv1.ModifyBa
 	}, nil
 
 }
+
+func (s *WalletServer) GetWallet(ctx context.Context, req *walletv1.GetWalletRequest) (*walletv1.GetWalletResponse, error) {
+	log := logger.Ctx(ctx)
+	PhoneNumber := req.PhoneNumber
+
+
+	walletRes, err := s.service.GetWalletByPhoneNumber(ctx, PhoneNumber) 
+	if err != nil {
+		if errors.Is(err, wallet.ErrWalletNotFound) {
+			log.Warn().Err(err).Msg("Wallet not found (from grpc server)")
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		return nil, status.Error(codes.Internal, "Internal server error")
+	}
+
+	return &walletv1.GetWalletResponse{
+		WalletId: walletRes.WalletID,
+		OwnerName: walletRes.OwnerName,
+	}, nil
+}
