@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"strconv"
 )
 
 // i will define the DTOs for every request/response here for the wallet service
@@ -14,6 +15,7 @@ type CreateWalletRequest struct {
 	PhoneNumber  string  `json:"phone_number"`
 	CurrencyCode string  `json:"currency_code"`
 	FamilyID     *string `json:"family_id,omitempty"` // a pointer because it can be null if the wallet is not part of a family
+	NationalID   string  `json:"national_id"`
 }
 
 type CreateWalletResponse struct {
@@ -34,6 +36,8 @@ type GetWalletResponse struct {
 	Balance      int64   `json:"balance"`
 	CurrencyCode string  `json:"currency_code"`
 	FamilyID     *string `json:"family_id,omitempty"`
+	NationalID   string  `json:"national_id"`
+	BirthDate    time.Time `json:"birth_date"`
 }
 
 type UpdateWalletBalanceRequest struct {
@@ -64,25 +68,66 @@ func (r *CreateWalletRequest) Validate() error {
 
 	// verify the phone number is valid and starts with +20 and is 13 characters long
 	r.PhoneNumber = strings.TrimSpace(r.PhoneNumber)
-	err := ValidatePhoneNumber(&r.PhoneNumber)
-	if err != nil {
+	
+	if err := ValidatePhoneNumber(&r.PhoneNumber); err != nil {
 		return err
 	}
+
+	if err := ValidateNationalID(r.NationalID); err != nil {
+		return err
+	}
+	
 
 	return nil
 }
 
 func ValidatePhoneNumber(phoneNumber *string) error {
 	*phoneNumber = strings.TrimSpace(*phoneNumber)
-	if !strings.HasPrefix(*phoneNumber, "+20") || len(*phoneNumber) != 13 {
+	if !(strings.HasPrefix(*phoneNumber, "010") || strings.HasPrefix(*phoneNumber, "011") || strings.HasPrefix(*phoneNumber, "012") || strings.HasPrefix(*phoneNumber, "015")) || len(*phoneNumber) != 11 {
 		return ErrInvalidPhoneNumber // return the domain error for invalid phone number format
 	}
 
 	// 2. Verify the payload is numeric (prevents +20ABCDEFGHIJ)
-	for _, ch := range (*phoneNumber)[3:] {
+	for _, ch := range (*phoneNumber) {
 		if ch < '0' || ch > '9' {
 			return ErrInvalidPhoneNumber // return the domain error for invalid phone number format
 		}
 	}
 	return nil
 }
+
+
+func ValidateNationalID(nationalID string) error {
+	if len(nationalID) != 14 {
+		return ErrInvalidNationalID
+	}
+
+	// 2. Verify the payload is numeric
+	for _, ch := range (nationalID) {
+		if ch < '0' || ch > '9' {
+			return ErrInvalidNationalID
+		}
+	}
+
+	if nationalID[0] != '2' && nationalID[0] != '3' {
+		return ErrInvalidNationalID
+	}
+	month, err := strconv.Atoi(nationalID[3:5]) 
+	if err != nil {
+		return err
+	}
+	if month <= 0 || month > 12 {
+		return ErrInvalidNationalID
+	}
+
+	day, err := strconv.Atoi(nationalID[5:7]) 
+	if err != nil {
+		return err
+	}
+	if day <= 0 || day > 31 {
+		return ErrInvalidNationalID
+	}
+
+	return nil
+}
+

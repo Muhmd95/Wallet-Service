@@ -17,5 +17,7 @@ type Repository interface {
 
 	GetWalletByPhoneNumber(ctx context.Context, phoneNumber string) (*Wallet, error)
 
-	UpdateWalletBalance(ctx context.Context, phoneNumber string, amount int64) (*Wallet, error)
+	UpdateWalletBalance(ctx context.Context, phoneNumber string, amount int64, refID string) (*Wallet, error)
+
+	GetWalletByID(ctx context.Context, walletID string) (*Wallet, error)
 }
