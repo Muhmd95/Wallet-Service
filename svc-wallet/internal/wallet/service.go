@@ -44,14 +44,15 @@ func (s *Service) CreateWallet(ctx context.Context, req *CreateWalletRequest) (*
 
 
 	wallet := &Wallet{
-		PhoneNumber:  req.PhoneNumber,
-		OwnerName:    req.OwnerName,
-		CurrencyCode: req.CurrencyCode,
-		Balance:      0, // initial balance is 0
-		NationalID: req.NationalID,
-		BirthDate: birthDate,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		PhoneNumber:  	req.PhoneNumber,
+		OwnerName:    	req.OwnerName,
+		CurrencyCode: 	req.CurrencyCode,
+		Balance:      	0, // initial balance is 0
+		NationalID: 	req.NationalID,
+		BirthDate: 		birthDate,
+		ProcessedRefs: 	make([]string, 0),
+		CreatedAt:    	time.Now(),
+		UpdatedAt:    	time.Now(),
 	}
 
 	err = s.repo.CreateWallet(ctx, wallet)
