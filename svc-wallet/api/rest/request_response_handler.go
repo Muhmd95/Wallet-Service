@@ -219,7 +219,6 @@ func (c *WalletController) GetWalletByID(w http.ResponseWriter, r *http.Request)
 // @Failure      404      {object}  map[string]string                  "Wallet Not Found"
 // @Failure      405      {object}  map[string]string                  "Method Not Allowed"
 // @Failure      500      {object}  map[string]string                  "Internal Server Error"
-// @Failure      409              {object}  map[string]string  "Duplicate request (idempotency key already processed)"
 // @Router       /wallet/balance [patch]
 func (c *WalletController) ModifyWalletBalance(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
