@@ -130,14 +130,15 @@ func main() {
 		// to extract the trace id from the incoming requests
 	)
 	myWalletServer := grpcserver.NewWalletServer(service)
-	go func() {
-		listener, err := net.Listen("tcp", ":"+grpcPort)
-		if err != nil {
-			logger.Log.Fatal().Err(err).Msg("Failed to listen on gRPC port")
-		}
+	// Register the gRPC server
+	walletv1.RegisterWalletServiceServer(grpcServer, myWalletServer)
+	listener, err := net.Listen("tcp", ":"+grpcPort)
+	if err != nil {
+		logger.Log.Fatal().Err(err).Msg("Failed to listen on gRPC port")
+	}
 
-		// Register the gRPC server
-		walletv1.RegisterWalletServiceServer(grpcServer, myWalletServer)
+	go func() {
+
 		logger.Log.Info().Str("port", grpcPort).Msg("gRPC server is listening")
 		if err := grpcServer.Serve(listener); err != nil {
 			logger.Log.Fatal().Err(err).Msg("gRPC server crashed")
