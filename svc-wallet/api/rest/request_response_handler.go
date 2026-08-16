@@ -38,6 +38,7 @@ func (c *WalletController) CreateWallet(w http.ResponseWriter, r *http.Request) 
 
 	var reqData wallet.CreateWalletRequest
 	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&reqData); err != nil {
 		log.Warn().Err(err).Msg("Failed to decode request body")
 		respondWithError(w, http.StatusBadRequest, "Invalid request payload")
@@ -239,7 +240,9 @@ func (c *WalletController) ModifyWalletBalance(w http.ResponseWriter, r *http.Re
 	}
 
 	var reqData wallet.UpdateWalletBalanceRequest
-	if err := json.NewDecoder(r.Body).Decode(&reqData); err != nil {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&reqData); err != nil {
 		log.Warn().Err(err).Msg("Invalid request payload")
 		respondWithError(w, http.StatusBadRequest, "Invalid request payload")
 		return
