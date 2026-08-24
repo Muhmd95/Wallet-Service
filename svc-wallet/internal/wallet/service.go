@@ -2,16 +2,16 @@ package wallet
 
 import (
 	"context"
+	"errors"
 	"svc-wallet/util/logger"
 	"time"
-	"errors"
 )
 
 // any validation of thre request should be done in the handler and not in the service layer
 
 type Service struct {
 	repo Repository // this is the repository layer that will be used to interact with the database
-	// txManager TxManager  
+	// txManager TxManager
 	// this will be a structure for managing the multi step transactions that will contain a client of mongo
 }
 
@@ -30,11 +30,11 @@ func (s *Service) CreateWallet(ctx context.Context, req *CreateWalletRequest) (*
 	} else {
 		year = "20"
 	}
-	year+=req.NationalID[1:3]
+	year += req.NationalID[1:3]
 	month := req.NationalID[3:5]
 	day := req.NationalID[5:7]
 
-	birthDateStr := year+"-"+month+"-"+day
+	birthDateStr := year + "-" + month + "-" + day
 
 	birthDate, err := time.Parse("2006-01-02", birthDateStr)
 	if err != nil {
@@ -42,17 +42,16 @@ func (s *Service) CreateWallet(ctx context.Context, req *CreateWalletRequest) (*
 		return nil, err
 	}
 
-
 	wallet := &Wallet{
-		PhoneNumber:  	req.PhoneNumber,
-		OwnerName:    	req.OwnerName,
-		CurrencyCode: 	req.CurrencyCode,
-		Balance:      	0, // initial balance is 0
-		NationalID: 	req.NationalID,
-		BirthDate: 		birthDate,
-		ProcessedRefs: 	make([]string, 0),
-		CreatedAt:    	time.Now(),
-		UpdatedAt:    	time.Now(),
+		PhoneNumber:   req.PhoneNumber,
+		OwnerName:     req.OwnerName,
+		CurrencyCode:  req.CurrencyCode,
+		Balance:       0, // initial balance is 0
+		NationalID:    req.NationalID,
+		BirthDate:     birthDate,
+		ProcessedRefs: make([]string, 0),
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 
 	err = s.repo.CreateWallet(ctx, wallet)
@@ -90,8 +89,8 @@ func (s *Service) GetWalletByPhoneNumber(ctx context.Context, phoneNumber string
 		OwnerName:    wallet.OwnerName,
 		CurrencyCode: wallet.CurrencyCode,
 		Balance:      wallet.Balance,
-		NationalID: wallet.NationalID,
-		BirthDate: wallet.BirthDate,
+		NationalID:   wallet.NationalID,
+		BirthDate:    wallet.BirthDate,
 		FamilyID:     nil, // this
 		//  will be implemented in the future when the family feature is added
 	}, nil
@@ -115,8 +114,8 @@ func (s *Service) GetWalletByID(ctx context.Context, walletID string) (*GetWalle
 		OwnerName:    wallet.OwnerName,
 		CurrencyCode: wallet.CurrencyCode,
 		Balance:      wallet.Balance,
-		NationalID: wallet.NationalID,
-		BirthDate: wallet.BirthDate,
+		NationalID:   wallet.NationalID,
+		BirthDate:    wallet.BirthDate,
 		FamilyID:     nil, // this
 		//  will be implemented in the future when the family feature is added
 	}, nil

@@ -2,9 +2,9 @@ package wallet
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
-	"strconv"
 )
 
 // i will define the DTOs for every request/response here for the wallet service
@@ -30,13 +30,13 @@ type CreateWalletResponse struct {
 // this is the response for the get wallet endpoint the walletid
 // will be passed in the url and the rest of the fields will be returned in the response
 type GetWalletResponse struct {
-	WalletID     string  `json:"wallet_id"`
-	PhoneNumber  string  `json:"phone_number"`
-	OwnerName    string  `json:"owner_name"`
-	Balance      int64   `json:"balance"`
-	CurrencyCode string  `json:"currency_code"`
-	FamilyID     *string `json:"family_id,omitempty"`
-	NationalID   string  `json:"national_id"`
+	WalletID     string    `json:"wallet_id"`
+	PhoneNumber  string    `json:"phone_number"`
+	OwnerName    string    `json:"owner_name"`
+	Balance      int64     `json:"balance"`
+	CurrencyCode string    `json:"currency_code"`
+	FamilyID     *string   `json:"family_id,omitempty"`
+	NationalID   string    `json:"national_id"`
 	BirthDate    time.Time `json:"birth_date"`
 }
 
@@ -68,7 +68,7 @@ func (r *CreateWalletRequest) Validate() error {
 
 	// verify the phone number is valid and starts with +20 and is 13 characters long
 	r.PhoneNumber = strings.TrimSpace(r.PhoneNumber)
-	
+
 	if err := ValidatePhoneNumber(&r.PhoneNumber); err != nil {
 		return err
 	}
@@ -76,7 +76,6 @@ func (r *CreateWalletRequest) Validate() error {
 	if err := ValidateNationalID(r.NationalID); err != nil {
 		return err
 	}
-	
 
 	return nil
 }
@@ -88,7 +87,7 @@ func ValidatePhoneNumber(phoneNumber *string) error {
 	}
 
 	// 2. Verify the payload is numeric (prevents +20ABCDEFGHIJ)
-	for _, ch := range (*phoneNumber) {
+	for _, ch := range *phoneNumber {
 		if ch < '0' || ch > '9' {
 			return ErrInvalidPhoneNumber // return the domain error for invalid phone number format
 		}
@@ -96,14 +95,13 @@ func ValidatePhoneNumber(phoneNumber *string) error {
 	return nil
 }
 
-
 func ValidateNationalID(nationalID string) error {
 	if len(nationalID) != 14 {
 		return ErrInvalidNationalID
 	}
 
 	// 2. Verify the payload is numeric
-	for _, ch := range (nationalID) {
+	for _, ch := range nationalID {
 		if ch < '0' || ch > '9' {
 			return ErrInvalidNationalID
 		}
@@ -112,7 +110,7 @@ func ValidateNationalID(nationalID string) error {
 	if nationalID[0] != '2' && nationalID[0] != '3' {
 		return ErrInvalidNationalID
 	}
-	month, err := strconv.Atoi(nationalID[3:5]) 
+	month, err := strconv.Atoi(nationalID[3:5])
 	if err != nil {
 		return err
 	}
@@ -120,7 +118,7 @@ func ValidateNationalID(nationalID string) error {
 		return ErrInvalidNationalID
 	}
 
-	day, err := strconv.Atoi(nationalID[5:7]) 
+	day, err := strconv.Atoi(nationalID[5:7])
 	if err != nil {
 		return err
 	}
@@ -130,4 +128,3 @@ func ValidateNationalID(nationalID string) error {
 
 	return nil
 }
-

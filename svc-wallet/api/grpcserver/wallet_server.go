@@ -3,11 +3,11 @@ package grpcserver
 import (
 	"context"
 
+	"errors"
 	walletv1 "github.com/Muhmd95/Contracts/wallet/v1"
-	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"errors"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 
 	"svc-wallet/internal/wallet"
 	"svc-wallet/util/logger"
@@ -35,7 +35,6 @@ func (s *WalletServer) ModifyBalance(ctx context.Context, req *walletv1.ModifyBa
 		return nil, status.Error(codes.InvalidArgument, "Update amount must be not equal to zero")
 	}
 	// validation of amount is done in transactions service
-	
 
 	err := wallet.ValidatePhoneNumber(&phoneNumber)
 	if err != nil {
@@ -59,8 +58,8 @@ func (s *WalletServer) ModifyBalance(ctx context.Context, req *walletv1.ModifyBa
 	log.Info().Str("phone_number", phoneNumber).Msg("Wallet balance modification response sent successfully (from grpc server)")
 
 	return &walletv1.ModifyBalanceResponse{
-		WalletId: modifyResponse.WalletID,
-		Balance:  modifyResponse.Balance,
+		WalletId:  modifyResponse.WalletID,
+		Balance:   modifyResponse.Balance,
 		UpdatedAt: timestamppb.New(modifyResponse.UpdatedAt),
 	}, nil
 
@@ -70,8 +69,7 @@ func (s *WalletServer) GetWallet(ctx context.Context, req *walletv1.GetWalletReq
 	log := logger.Ctx(ctx)
 	PhoneNumber := req.PhoneNumber
 
-
-	walletRes, err := s.service.GetWalletByPhoneNumber(ctx, PhoneNumber) 
+	walletRes, err := s.service.GetWalletByPhoneNumber(ctx, PhoneNumber)
 	if err != nil {
 		if errors.Is(err, wallet.ErrWalletNotFound) {
 			log.Warn().Err(err).Msg("Wallet not found (from grpc server)")
@@ -81,7 +79,7 @@ func (s *WalletServer) GetWallet(ctx context.Context, req *walletv1.GetWalletReq
 	}
 
 	return &walletv1.GetWalletResponse{
-		WalletId: walletRes.WalletID,
+		WalletId:  walletRes.WalletID,
 		OwnerName: walletRes.OwnerName,
 	}, nil
 }

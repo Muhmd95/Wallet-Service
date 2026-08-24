@@ -145,8 +145,6 @@ func (c *WalletController) GetWalletByPhoneNumber(w http.ResponseWriter, r *http
 
 }
 
-
-
 // GetWallet retrieves an existing wallet by wallet id.
 // @Summary      Retrieve a wallet
 // @Description  Fetches the wallet details using the provided phone number query parameter.
