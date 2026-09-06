@@ -48,24 +48,6 @@ definitions:
       wallet_id:
         type: string
     type: object
-  wallet.UpdateWalletBalanceRequest:
-    properties:
-      amount:
-        description: this can be positive or negative depending on the operation
-        type: integer
-      phone_number:
-        type: string
-    type: object
-  wallet.UpdateWalletBalanceResponse:
-    properties:
-      balance:
-        type: integer
-      updated_at:
-        description: currency code will be added in the future
-        type: string
-      wallet_id:
-        type: string
-    type: object
 host: localhost:8000
 info:
   contact: {}
@@ -152,59 +134,6 @@ paths:
               type: string
             type: object
       summary: Retrieve a wallet
-      tags:
-      - Wallet
-  /wallet/balance:
-    patch:
-      consumes:
-      - application/json
-      description: Directly updates the balance of a wallet based on the requested
-        amount.
-      parameters:
-      - description: Update Balance Payload
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/wallet.UpdateWalletBalanceRequest'
-      - description: Unique key to prevent duplicate balance modifications
-        in: header
-        name: Idempotency-Key
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Balance updated successfully
-          schema:
-            $ref: '#/definitions/wallet.UpdateWalletBalanceResponse'
-        "400":
-          description: Bad Request (Invalid payload, insufficient balance, or capacity
-            limit)
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Wallet Not Found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "405":
-          description: Method Not Allowed
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Modify wallet balance
       tags:
       - Wallet
   /wallet/phone/{phone_number}:

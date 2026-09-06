@@ -70,83 +70,6 @@
                 }
             }
         },
-        "/wallet/balance": {
-            "patch": {
-                "description": "Directly updates the balance of a wallet based on the requested amount.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Wallet"
-                ],
-                "summary": "Modify wallet balance",
-                "parameters": [
-                    {
-                        "description": "Update Balance Payload",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/wallet.UpdateWalletBalanceRequest"
-                        }
-                    },
-                    {
-                        "type": "string",
-                        "description": "Unique key to prevent duplicate balance modifications",
-                        "name": "Idempotency-Key",
-                        "in": "header",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Balance updated successfully",
-                        "schema": {
-                            "$ref": "#/definitions/wallet.UpdateWalletBalanceResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request (Invalid payload, insufficient balance, or capacity limit)",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Wallet Not Found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "405": {
-                        "description": "Method Not Allowed",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
         "/wallet/phone/{phone_number}": {
             "get": {
                 "description": "Fetches the wallet details using the provided phone number query parameter.",
@@ -328,33 +251,6 @@
                     "type": "string"
                 },
                 "phone_number": {
-                    "type": "string"
-                },
-                "wallet_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "wallet.UpdateWalletBalanceRequest": {
-            "type": "object",
-            "properties": {
-                "amount": {
-                    "description": "this can be positive or negative depending on the operation",
-                    "type": "integer"
-                },
-                "phone_number": {
-                    "type": "string"
-                }
-            }
-        },
-        "wallet.UpdateWalletBalanceResponse": {
-            "type": "object",
-            "properties": {
-                "balance": {
-                    "type": "integer"
-                },
-                "updated_at": {
-                    "description": "currency code will be added in the future",
                     "type": "string"
                 },
                 "wallet_id": {
