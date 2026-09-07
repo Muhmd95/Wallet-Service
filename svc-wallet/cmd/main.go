@@ -16,6 +16,7 @@ import (
 	// project paths
 	"svc-wallet/api/grpcserver"
 	"svc-wallet/api/rest"
+	"svc-wallet/external/kafka/consumer"
 	"svc-wallet/external/mongodb"
 	"svc-wallet/internal/wallet"
 	"svc-wallet/util/logger"
@@ -69,6 +70,25 @@ func main() {
 		dbName = "wallet_db" // default database name
 	}
 
+	// get kafka brokers
+	brokers := os.Getenv("KAFKA_BROKERS")
+	if brokers == "" {
+		logger.Log.Fatal().Msg("KAFKA_BROKERS environment variable is required but not set")
+	}
+	kafkaBrokers := []string{brokers} // convert to slice of strings
+
+	// get kafka group id
+	kafkaGroupID := os.Getenv("KAFKA_GROUP_ID")
+	if kafkaGroupID == "" {
+		logger.Log.Fatal().Msg("KAFKA_GROUP_ID environment variable is required but not set")
+	}
+
+	// get kafka topic
+	kafkaTopic := os.Getenv("KAFKA_TOPIC")
+	if kafkaTopic == "" {
+		logger.Log.Fatal().Msg("KAFKA_TOPIC environment variable is required but not set")
+	}
+
 	mongoClient, err := mongodb.ConnectMongoDB(mongoURI)
 	if err != nil {
 		logger.Log.Fatal().Err(err).Msg("Failed to connect to MongoDB")
@@ -94,6 +114,16 @@ func main() {
 
 	// Initialize the wallet service
 	service := wallet.NewService(walletRepo)
+
+	//init kafka
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // ensure the context is canceled when main exits
+	kafkaConsumer, err := consumer.NewConsumer(context.Background(), kafkaBrokers, kafkaGroupID, kafkaTopic, service)
+	if err != nil {
+		logger.Log.Fatal().Err(err).Msg("Failed to create Kafka consumer")
+	}
+	go kafkaConsumer.Run(ctx)   // run the consumer in a separate goroutine
+	defer kafkaConsumer.Close() // close the consumer when the app exits
 
 	// Initialize the REST API handler
 	controller := rest.NewWalletController(service)
@@ -154,7 +184,7 @@ func main() {
 	logger.Log.Info().Msg("Shutting down svc-wallet gracefully...")
 
 	// 4. Wait up to 10 seconds for current requests to finish
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := server.Shutdown(ctx); err != nil {

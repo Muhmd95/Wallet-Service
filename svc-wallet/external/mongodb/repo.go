@@ -79,34 +79,39 @@ func (r *mongoRepository) UpdateWalletBalance(ctx context.Context, phoneNumber s
 	log := logger.Ctx(ctx)
 	// this is the method that will update the balance of the wallet in the collection in the mongo database
 	var updatedWallet wallet.Wallet
-	filter := bson.M{}
-	retError := wallet.ErrWalletNotFound
+	// filter := bson.M{}
+	// retError := wallet.ErrWalletNotFound
 	// err := r.collection.FindOne(ctx, filter).Decode(&updatedWallet)
 	// if err == nil {
 	// 	log.Info().Msg("The transactions was already processed (repo layer)")
 	// 	return &updatedWallet, nil
 	// }
 
-	if amount > 0 {
-		filter = bson.M{
-			"phone_number":   phoneNumber,
-			"balance":        bson.M{"$lte": wallet.WalletMax - amount},
-			"processed_refs": bson.M{"$ne": refID},
-		}
-		retError = wallet.ErrExceedsMaxBalance
-	} else {
-		filter = bson.M{
-			"phone_number":   phoneNumber,
-			"balance":        bson.M{"$gte": -amount},
-			"processed_refs": bson.M{"$ne": refID},
-		}
-		retError = wallet.ErrInsufficientBalance
-	}
+	// if amount > 0 {
+	// 	filter = bson.M{
+	// 		"phone_number":   phoneNumber,
+	// 		"balance":        bson.M{"$lte": wallet.WalletMax - amount},
+	// 		"processed_refs": bson.M{"$ne": refID},
+	// 	}
+	// 	retError = wallet.ErrExceedsMaxBalance
+	// } else {
+	// 	filter = bson.M{
+	// 		"phone_number":   phoneNumber,
+	// 		"balance":        bson.M{"$gte": -amount},
+	// 		"processed_refs": bson.M{"$ne": refID},
+	// 	}
+	// 	retError = wallet.ErrInsufficientBalance
+	// }
 	// the filter
 	// to decrease the balance pass amount as negative value
+
+	// i will remove all logic from the wallet service as the transactions handles all logic
+	filter := bson.M{
+		"phone_number":   phoneNumber,
+		"processed_refs": bson.M{"$ne": refID},
+	}
 	update := bson.M{
-		"$inc": bson.M{"balance": amount},
-		"$set": bson.M{"updated_at": time.Now()},
+		"$set": bson.M{"updated_at": time.Now(), "balance": amount}, // i am now fetching the balance from the transactions
 		"$push": bson.M{
 			"processed_refs": bson.M{
 				"$each":  bson.A{refID}, // need to push an array to use slice, push and position methods
@@ -127,9 +132,10 @@ func (r *mongoRepository) UpdateWalletBalance(ctx context.Context, phoneNumber s
 				log.Info().Msg("The transactions was already processed (repo layer)")
 				return &updatedWallet, nil
 			}
-			// then it is not processed
-			return nil, retError // return the domain error for wallet not found
 		}
+		// 	// then it is not processed
+		// 	return nil, retError // return the domain error for wallet not found
+		// }
 		log.Error().Err(err).Msg("Failed to update the wallet balance (from repo layer)")
 		return nil, err // return any other error
 	}

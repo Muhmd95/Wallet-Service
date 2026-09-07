@@ -122,20 +122,20 @@ func (s *Service) GetWalletByID(ctx context.Context, walletID string) (*GetWalle
 
 }
 
-// need to be refacoted in phase 2
+// fully idempotent consistent function
 func (s *Service) ModifyWalletBalance(ctx context.Context, phoneNumber string, amount int64, refID string) (*UpdateWalletBalanceResponse, error) {
 
 	log := logger.Ctx(ctx)
 
-	_, err := s.repo.GetWalletByPhoneNumber(ctx, phoneNumber)
-	if err != nil {
-		if errors.Is(err, ErrWalletNotFound) {
-			log.Warn().Err(err).Str("phone_number", phoneNumber).Msg("Wallet not found (from service layer)")
-		}
-		return nil, err
-	}
+	// _, err := s.repo.GetWalletByPhoneNumber(ctx, phoneNumber)
+	// if err != nil {
+	// 	if errors.Is(err, ErrWalletNotFound) {
+	// 		log.Warn().Err(err).Str("phone_number", phoneNumber).Msg("Wallet not found (from service layer)")
+	// 	}
+	// 	return nil, err
+	// }
 
-	// balance musnt exceed the wallet max or doesnt be below 0
+	// all logic moved to the transactions
 	result, err := s.repo.UpdateWalletBalance(ctx, phoneNumber, amount, refID)
 	if err != nil {
 		if errors.Is(err, ErrExceedsMaxBalance) {
@@ -143,6 +143,7 @@ func (s *Service) ModifyWalletBalance(ctx context.Context, phoneNumber string, a
 		} else if errors.Is(err, ErrInsufficientBalance) {
 			log.Warn().Err(err).Str("phone_number", phoneNumber).Msg("Insufficient balance (from service layer)")
 		}
+		log.Error().Msg("Couldn't update the wallet balance (from service)")
 		return nil, err
 	}
 
@@ -151,4 +152,10 @@ func (s *Service) ModifyWalletBalance(ctx context.Context, phoneNumber string, a
 		Balance:   result.Balance,
 		UpdatedAt: result.UpdatedAt,
 	}, nil
+}
+
+// interface for the consumer to use
+func (s *Service) ProcessTransactionEvent(ctx context.Context, evt TransactionEvent) error {
+	_, err := s.ModifyWalletBalance(ctx, evt.PhoneNumber, evt.BalanceAfter, evt.ID)
+	return err
 }

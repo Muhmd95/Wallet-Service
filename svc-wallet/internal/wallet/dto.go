@@ -40,17 +40,45 @@ type GetWalletResponse struct {
 	BirthDate    time.Time `json:"birth_date"`
 }
 
+// old dtos not useed (were used by the rest api)
 type UpdateWalletBalanceRequest struct {
 	PhoneNumber string `json:"phone_number"`
 	Amount      int64  `json:"amount"` // this can be positive or negative depending on the operation
 	// in the future i will add the currency code
 }
-
 type UpdateWalletBalanceResponse struct {
 	WalletID string `json:"wallet_id"`
 	Balance  int64  `json:"balance"`
 	// currency code will be added in the future
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// OBSERVED wire shape on transactions_db.transactions (verified via console-consumer):
+//
+//	{
+//	  "_id": "{\"$oid\": \"6a96ed4026e9db4bb4a3703b\"}",   <- STRING containing extended JSON
+//	  "phone_number": "01511111111",
+//	  "sender_phone": "",
+//	  "receiver_phone": "",
+//	  "type": "DEPOSIT",
+//	  "amount": 50,
+//	  "wallet_id": "6a96e647c3449c68b46c7a32",
+//	  "balance_after": 300,
+//	  "created_at": 1788276032891                          <- plain epoch-milliseconds
+//	}
+//
+// ($project strips: reference_id, balance_before, status, sequence_number)
+type TransactionEvent struct {
+	EventType           string `json:"type"` // raw vocab: DEPOSIT | WITHDRAWAL | TRANSFER (legs derived in render)
+	ID                  string `json:"_id"`  // string containing {"$oid": "..."} — normalized in the consumer
+	SenderPhoneNumber   string `json:"sender_phone"`
+	ReceiverPhoneNumber string `json:"receiver_phone"`
+	WalletID            string `json:"wallet_id"` // partition key
+	PhoneNumber         string `json:"phone_number"`
+	NationalID          string `json:"national_id"` // for the future will wire the user and their wallets
+	Amount              int64  `json:"amount"`
+	BalanceAfter        int64  `json:"balance_after"`
+	OccurredAt          int64  `json:"created_at"` // business time when the money moved (epoch millis)
 }
 
 // validation function for the wallet
