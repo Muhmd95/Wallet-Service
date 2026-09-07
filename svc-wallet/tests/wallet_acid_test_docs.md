@@ -2,7 +2,7 @@
 
 This document describes the `wallet_acid_test.go` integration tests for the Wallet Service. These tests hit the live HTTP endpoint (`http://localhost:8000/v1`) to verify wallet creation and uniqueness constraints.
 
-> **Note:** Balance modification tests were removed after the `PATCH /v1/wallet/balance` REST endpoint was closed. Balance is now only modified via the gRPC `ModifyBalance` RPC, called internally by the Transactions Service.
+> **Note:** Direct balance modification endpoints were removed. The wallet balance is now updated asynchronously via the Kafka Connect CDC pipeline consuming from `transactions_db.transactions`.
 
 ## Test Scenarios Overview
 
