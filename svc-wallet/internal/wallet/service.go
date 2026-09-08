@@ -147,6 +147,8 @@ func (s *Service) ModifyWalletBalance(ctx context.Context, phoneNumber string, a
 		return nil, err
 	}
 
+	log.Info().Str("phone_number", phoneNumber).Int64("new_balance", result.Balance).Msg("Wallet balance updated successfully (from service layer)")
+
 	return &UpdateWalletBalanceResponse{
 		WalletID:  result.ID.Hex(),
 		Balance:   result.Balance,
