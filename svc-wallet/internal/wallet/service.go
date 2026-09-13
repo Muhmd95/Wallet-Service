@@ -168,10 +168,11 @@ func (s *Service) ProcessTransactionEvent(ctx context.Context, evt TransactionEv
 	cached, err := s.rdb.HGetAll(ctx, "wallet:"+evt.WalletID).Result()
 	if err != nil {
 		log.Error().Err(err).Str("wallet_id", evt.WalletID).Msg("Failed to get wallet from Redis cache")
+		return nil // if redis is down return
 	}
 	if len(cached) == 0 {
 		s.rdb.HSet(ctx, "wallet:"+evt.WalletID, "balance", evt.BalanceAfter, "last_time", evt.OccurredAt)
-		return nil
+		return nil // if the wallet is not in the cache, set it and return
 	}
 	last, err := strconv.ParseInt(cached["last_time"], 10, 64)
 	if err != nil {
