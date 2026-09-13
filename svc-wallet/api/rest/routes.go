@@ -27,7 +27,11 @@ func RegisterRoutes(mux *http.ServeMux, controller *WalletController) {
 	getWalletHandlerID := otelhttp.NewHandler(http.HandlerFunc(controller.GetWalletByID), "GetWalletByID")
 	mux.Handle("GET /v1/wallet/{wallet_id}", getWalletHandlerID)
 
-	// 4. Swagger UI handler mounted directly to your mux
+	// 4. get wallet balance by wallet id
+	getWalletBalanceHandler := otelhttp.NewHandler(http.HandlerFunc(controller.GetBalanceByWalletID), "GetWalletBalance")
+	mux.Handle("GET /v1/wallet/balance/{wallet_id}", getWalletBalanceHandler)
+
+	// 5. Swagger UI handler mounted directly to your mux
 	mux.HandleFunc("/v1/swagger/", httpSwagger.Handler(
 		httpSwagger.URL("/v1/swagger/doc.json"),
 	))
