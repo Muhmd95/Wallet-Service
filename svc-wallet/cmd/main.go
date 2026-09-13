@@ -2,10 +2,6 @@ package main
 
 import (
 	"context"
-	walletv1 "github.com/Muhmd95/Contracts/wallet/v1"
-	"github.com/joho/godotenv"
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"google.golang.org/grpc"
 	"net"
 	"net/http"
 	"os"
@@ -13,11 +9,17 @@ import (
 	"syscall"
 	"time"
 
+	walletv1 "github.com/Muhmd95/Contracts/wallet/v1"
+	"github.com/joho/godotenv"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"google.golang.org/grpc"
+
 	// project paths
 	"svc-wallet/api/grpcserver"
 	"svc-wallet/api/rest"
 	"svc-wallet/external/kafka/consumer"
 	"svc-wallet/external/mongodb"
+	redisclient "svc-wallet/external/redis"
 	"svc-wallet/internal/wallet"
 	"svc-wallet/util/logger"
 	"svc-wallet/util/tracer"
@@ -89,6 +91,11 @@ func main() {
 		logger.Log.Fatal().Msg("KAFKA_TOPIC environment variable is required but not set")
 	}
 
+	// get the redis address
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" { redisAddr = "localhost:6379" }
+	rdb := redisclient.New(redisAddr)
+
 	mongoClient, err := mongodb.ConnectMongoDB(mongoURI)
 	if err != nil {
 		logger.Log.Fatal().Err(err).Msg("Failed to connect to MongoDB")
@@ -113,7 +120,7 @@ func main() {
 	}
 
 	// Initialize the wallet service
-	service := wallet.NewService(walletRepo)
+	service := wallet.NewService(walletRepo, rdb)
 
 	//init kafka
 	ctx, cancel := context.WithCancel(context.Background())

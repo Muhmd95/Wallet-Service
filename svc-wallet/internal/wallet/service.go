@@ -3,20 +3,21 @@ package wallet
 import (
 	"context"
 	"errors"
+	"strconv"
 	"svc-wallet/util/logger"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 // any validation of thre request should be done in the handler and not in the service layer
 
 type Service struct {
 	repo Repository // this is the repository layer that will be used to interact with the database
-	// txManager TxManager
-	// this will be a structure for managing the multi step transactions that will contain a client of mongo
+	rdb *redis.Client
 }
-
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo Repository, rc *redis.Client) *Service {
+	return &Service{repo: repo, rdb: rc}
 }
 
 func (s *Service) CreateWallet(ctx context.Context, req *CreateWalletRequest) (*CreateWalletResponse, error) {
@@ -158,6 +159,68 @@ func (s *Service) ModifyWalletBalance(ctx context.Context, phoneNumber string, a
 
 // interface for the consumer to use
 func (s *Service) ProcessTransactionEvent(ctx context.Context, evt TransactionEvent) error {
+	log := logger.Ctx(ctx)
 	_, err := s.ModifyWalletBalance(ctx, evt.PhoneNumber, evt.BalanceAfter, evt.ID)
-	return err
+	if err != nil {
+		log.Error().Err(err).Str("wallet_id", evt.WalletID).Str("event_id", evt.ID).Msg("Failed to process transaction event")
+		return err
+	}
+	cached, err := s.rdb.HGetAll(ctx, "wallet:"+evt.WalletID).Result()
+	if err != nil {
+		log.Error().Err(err).Str("wallet_id", evt.WalletID).Msg("Failed to get wallet from Redis cache")
+	}
+	if len(cached) == 0 {
+		s.rdb.HSet(ctx, "wallet:"+evt.WalletID, "balance", evt.BalanceAfter, "last_time", evt.OccurredAt)
+		return nil
+	}
+	last, err := strconv.ParseInt(cached["last_time"], 10, 64)
+	if err != nil {
+		log.Error().Err(err).Str("wallet_id", evt.WalletID).Msg("Failed to parse last_time from Redis cache")
+	}
+
+	// conpare the event time with the last cashed balance (idempotency against the processed events
+	if evt.OccurredAt >= last {  // OccurredAt = created_at millis from dto.go
+    	s.rdb.HSet(ctx, "wallet:"+evt.WalletID, "balance", evt.BalanceAfter, "last_time", evt.OccurredAt)
+	}
+	// else: skip = duplicate or old replay
+	return nil
+}
+
+func (s *Service) GetWalletBalance(ctx context.Context, walletID string) (*GetWalletBalanceResponse, error) {
+	log := logger.Ctx(ctx)
+	m, err := s.rdb.HGetAll(ctx, "wallet:"+walletID).Result()
+	if err != nil {
+		log.Error().Err(err).Str("wallet_id", walletID).Msg("Failed to get wallet from Redis cache")
+	}
+	if len(m) != 0 { 
+		balance, err := strconv.ParseInt(m["balance"], 10, 64)
+		if err != nil {
+			log.Error().Err(err).Str("wallet_id", walletID).Msg("Failed to parse balance from Redis cache")
+			return nil, err
+		}
+		updatedAtMillis, err := strconv.ParseInt(m["last_time"], 10, 64)
+		if err != nil {
+			log.Error().Err(err).Str("wallet_id", walletID).Msg("Failed to parse last_time from Redis cache")
+			return nil, err
+		}
+		return &GetWalletBalanceResponse{
+			Balance: balance,
+			UpdatedAt: time.UnixMilli(updatedAtMillis),
+		}, nil
+	 }  // HIT
+	w, err := s.repo.GetWalletByID(ctx, walletID)     // MISS
+	if err != nil {
+		if errors.Is(err, ErrWalletNotFound) {
+			log.Warn().Err(err).Str("wallet_id", walletID).Msg("Wallet not found (from service layer)")
+		} else if errors.Is(err, ErrInvalidWalletID) {
+			log.Warn().Err(err).Str("wallet_id", walletID).Msg("Invalid wallet ID (from service layer)")
+		}
+		log.Error().Err(err).Str("wallet_id", walletID).Msg("Failed to get wallet from database")
+		return nil, err
+	}
+	s.rdb.HSet(ctx, "wallet:"+walletID, "balance", w.Balance, "last_time", w.UpdatedAt.UnixMilli())
+	return &GetWalletBalanceResponse{
+		Balance: w.Balance,
+		UpdatedAt: w.UpdatedAt,
+	}, nil
 }
