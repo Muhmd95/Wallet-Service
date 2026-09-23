@@ -1,11 +1,15 @@
 package rest
 
 import (
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"net/http"
 
-	httpSwagger "github.com/swaggo/http-swagger"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	_ "svc-wallet/docs"
+
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 // @title           Wallet Service API
@@ -36,4 +40,6 @@ func RegisterRoutes(mux *http.ServeMux, controller *WalletController) {
 		httpSwagger.URL("/v1/swagger/doc.json"),
 	))
 
+	// 6. Prometheus metrics endpoint
+	mux.Handle("GET /metrics", promhttp.Handler())
 }

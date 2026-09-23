@@ -144,7 +144,7 @@ func main() {
 	// Start the HTTP server
 	server := &http.Server{
 		Addr:    ":" + port,
-		Handler: mux,
+		Handler: rest.RequestLogger(rest.MetricsMiddleware(mux)),
 	}
 
 	// ListenAndServe blocks forever unless it crashes
