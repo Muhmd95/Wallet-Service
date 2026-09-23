@@ -30,8 +30,9 @@ func main() {
 	logger.InitLogger("svc-wallet")
 	logger.Log.Info().Msg("Starting svc-wallet ...")
 
-	// init the tracer
-	tp, err := tracer.InitTracer("svc-wallet")
+	// init the tracer with OTLP endpoint for Jaeger
+	otlpEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	tp, err := tracer.InitTracer("svc-wallet", otlpEndpoint)
 	if err != nil {
 		logger.Log.Fatal().Err(err).Msg("Failed to initialize tracer")
 	}
