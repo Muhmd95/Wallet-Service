@@ -81,5 +81,84 @@ func (s *WalletServer) GetWallet(ctx context.Context, req *walletv1.GetWalletReq
 	return &walletv1.GetWalletResponse{
 		WalletId:  walletRes.WalletID,
 		OwnerName: walletRes.OwnerName,
+		Balance:   walletRes.Balance,
 	}, nil
+}
+
+func (s *WalletServer) CreateWallet(ctx context.Context, req *walletv1.CreateWalletRequest) (*walletv1.CreateWalletResponse, error) {
+	result, err := s.service.CreateUserWallet(ctx, req.GetUserId(), req.GetPhoneNumber())
+	if err != nil {
+		return nil, grpcError(err)
+	}
+	return &walletv1.CreateWalletResponse{
+		WalletId:  result.WalletID,
+		Balance:   result.Balance,
+		CreatedAt: timestamppb.New(result.CreatedAt),
+	}, nil
+}
+
+func (s *WalletServer) GetUserWallets(ctx context.Context, req *walletv1.GetUserWalletsRequest) (*walletv1.GetUserWalletsResponse, error) {
+	results, err := s.service.GetUserWallets(ctx, req.GetUserId())
+	if err != nil {
+		return nil, grpcError(err)
+	}
+	wallets := make([]*walletv1.WalletInfo, len(results))
+	for i, result := range results {
+		wallets[i] = &walletv1.WalletInfo{
+			WalletId:     result.ID.Hex(),
+			PhoneNumber:  result.PhoneNumber,
+			Balance:      result.Balance,
+			CurrencyCode: result.CurrencyCode,
+			CreatedAt:    timestamppb.New(result.CreatedAt),
+		}
+	}
+	return &walletv1.GetUserWalletsResponse{Wallets: wallets}, nil
+}
+
+func (s *WalletServer) GetWalletBalance(ctx context.Context, req *walletv1.GetWalletBalanceRequest) (*walletv1.GetWalletBalanceResponse, error) {
+	result, err := s.service.GetWalletBalance(ctx, req.GetWalletId())
+	if err != nil {
+		return nil, grpcError(err)
+	}
+	return &walletv1.GetWalletBalanceResponse{
+		WalletId:  req.GetWalletId(),
+		Balance:   result.Balance,
+		UpdatedAt: timestamppb.New(result.UpdatedAt),
+	}, nil
+}
+
+func (s *WalletServer) DeleteWallet(ctx context.Context, req *walletv1.DeleteWalletRequest) (*walletv1.DeleteWalletResponse, error) {
+	if err := s.service.DeleteWallet(ctx, req.GetWalletId()); err != nil {
+		return nil, grpcError(err)
+	}
+	return &walletv1.DeleteWalletResponse{Success: true}, nil
+}
+
+func (s *WalletServer) DeleteUserWallets(ctx context.Context, req *walletv1.DeleteUserWalletsRequest) (*walletv1.DeleteUserWalletsResponse, error) {
+	if err := s.service.DeleteUserWallets(ctx, req.GetUserId()); err != nil {
+		return nil, grpcError(err)
+	}
+	return &walletv1.DeleteUserWalletsResponse{Success: true}, nil
+}
+
+func grpcError(err error) error {
+	switch {
+	case errors.Is(err, context.Canceled):
+		return status.Error(codes.Canceled, "request canceled")
+	case errors.Is(err, context.DeadlineExceeded):
+		return status.Error(codes.DeadlineExceeded, "request deadline exceeded")
+	case errors.Is(err, wallet.ErrInvalidUserID),
+		errors.Is(err, wallet.ErrInvalidWalletID),
+		errors.Is(err, wallet.ErrInvalidPhoneNumber),
+		errors.Is(err, wallet.ErrInvalidNationalID):
+		return status.Error(codes.InvalidArgument, err.Error())
+	case errors.Is(err, wallet.ErrWalletNotFound):
+		return status.Error(codes.NotFound, err.Error())
+	case errors.Is(err, wallet.ErrDuplicatePhone):
+		return status.Error(codes.AlreadyExists, err.Error())
+	case errors.Is(err, wallet.ErrInsufficientBalance), errors.Is(err, wallet.ErrExceedsMaxBalance):
+		return status.Error(codes.FailedPrecondition, err.Error())
+	default:
+		return status.Error(codes.Internal, "internal server error")
+	}
 }
