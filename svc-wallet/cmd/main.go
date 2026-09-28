@@ -94,7 +94,9 @@ func main() {
 
 	// get the redis address
 	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" { redisAddr = "localhost:6379" }
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
 	rdb := redisclient.New(redisAddr)
 
 	mongoClient, err := mongodb.ConnectMongoDB(mongoURI)
@@ -133,12 +135,12 @@ func main() {
 	go kafkaConsumer.Run(ctx)   // run the consumer in a separate goroutine
 	defer kafkaConsumer.Close() // close the consumer when the app exits
 
-	// Initialize the REST API handler
+	// Keep the REST controller wired so the commented routes can be restored later.
 	controller := rest.NewWalletController(service)
 
 	// create a server mux
 	mux := http.NewServeMux()
-	// reguster the routes
+	// Business routes are commented in RegisterRoutes; /metrics remains active.
 	rest.RegisterRoutes(mux, controller)
 
 	// Start the HTTP server
