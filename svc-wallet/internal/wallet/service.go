@@ -5,10 +5,12 @@ import (
 	"errors"
 	"strconv"
 	"svc-wallet/util/logger"
+	"svc-wallet/util/metrics"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.opentelemetry.io/otel"
 )
 
 // Service methods validate transport-independent business inputs so every
@@ -24,6 +26,8 @@ func NewService(repo Repository, rc *redis.Client) *Service {
 }
 
 func (s *Service) CreateWallet(ctx context.Context, req *CreateWalletRequest) (*CreateWalletResponse, error) {
+	ctx, span := otel.Tracer("wallet-service").Start(ctx, "CreateWallet")
+	defer span.End()
 	log := logger.Ctx(ctx)
 	// the request is validated in the REST handler (currently disabled)
 
@@ -61,7 +65,7 @@ func (s *Service) CreateWallet(ctx context.Context, req *CreateWalletRequest) (*
 	err = s.repo.CreateWallet(ctx, wallet)
 	if err != nil {
 		if errors.Is(err, ErrDuplicatePhone) {
-			log.Warn().Err(err).Str("phone_number", req.PhoneNumber).Msg("Duplicate wallet creation attempt (from service layer)")
+			log.Warn().Err(err).Msg("Duplicate wallet creation attempt (from service layer)")
 		}
 		return nil, err
 	}
@@ -77,6 +81,8 @@ func (s *Service) CreateWallet(ctx context.Context, req *CreateWalletRequest) (*
 }
 
 func (s *Service) CreateUserWallet(ctx context.Context, userID, phoneNumber string) (*CreateWalletResponse, error) {
+	ctx, span := otel.Tracer("wallet-service").Start(ctx, "CreateUserWallet")
+	defer span.End()
 	userObjID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
 		return nil, ErrInvalidUserID
@@ -102,6 +108,8 @@ func (s *Service) CreateUserWallet(ctx context.Context, userID, phoneNumber stri
 }
 
 func (s *Service) GetUserWallets(ctx context.Context, userID string) ([]Wallet, error) {
+	ctx, span := otel.Tracer("wallet-service").Start(ctx, "GetUserWallets")
+	defer span.End()
 	if _, err := primitive.ObjectIDFromHex(userID); err != nil {
 		return nil, ErrInvalidUserID
 	}
@@ -109,6 +117,8 @@ func (s *Service) GetUserWallets(ctx context.Context, userID string) ([]Wallet, 
 }
 
 func (s *Service) DeleteWallet(ctx context.Context, walletID string) error {
+	ctx, span := otel.Tracer("wallet-service").Start(ctx, "DeleteWallet")
+	defer span.End()
 	if _, err := primitive.ObjectIDFromHex(walletID); err != nil {
 		return ErrInvalidWalletID
 	}
@@ -116,13 +126,18 @@ func (s *Service) DeleteWallet(ctx context.Context, walletID string) error {
 		return err
 	}
 	if err := s.rdb.Del(ctx, "wallet:"+walletID).Err(); err != nil {
+		metrics.RedisOperationsTotal.WithLabelValues("delete", "error").Inc()
 		log := logger.Ctx(ctx)
-		log.Warn().Err(err).Str("wallet_id", walletID).Msg("Failed to invalidate deleted wallet cache")
+		log.Warn().Err(err).Msg("Failed to invalidate deleted wallet cache")
+	} else {
+		metrics.RedisOperationsTotal.WithLabelValues("delete", "success").Inc()
 	}
 	return nil
 }
 
 func (s *Service) DeleteUserWallets(ctx context.Context, userID string) error {
+	ctx, span := otel.Tracer("wallet-service").Start(ctx, "DeleteUserWallets")
+	defer span.End()
 	if _, err := primitive.ObjectIDFromHex(userID); err != nil {
 		return ErrInvalidUserID
 	}
@@ -138,19 +153,24 @@ func (s *Service) DeleteUserWallets(ctx context.Context, userID string) error {
 		keys[i] = "wallet:" + walletID
 	}
 	if err := s.rdb.Del(ctx, keys...).Err(); err != nil {
+		metrics.RedisOperationsTotal.WithLabelValues("delete", "error").Inc()
 		log := logger.Ctx(ctx)
-		log.Warn().Err(err).Str("user_id", userID).Msg("Failed to invalidate deleted wallet caches")
+		log.Warn().Err(err).Msg("Failed to invalidate deleted wallet caches")
+	} else {
+		metrics.RedisOperationsTotal.WithLabelValues("delete", "success").Inc()
 	}
 	return nil
 }
 
 func (s *Service) GetWalletByPhoneNumber(ctx context.Context, phoneNumber string) (*GetWalletResponse, error) {
+	ctx, span := otel.Tracer("wallet-service").Start(ctx, "GetWalletByPhoneNumber")
+	defer span.End()
 	log := logger.Ctx(ctx)
 
 	wallet, err := s.repo.GetWalletByPhoneNumber(ctx, phoneNumber)
 	if err != nil {
 		if errors.Is(err, ErrWalletNotFound) {
-			log.Warn().Err(err).Str("phone_number", phoneNumber).Msg("Wallet not found (from service layer)")
+			log.Warn().Err(err).Msg("Wallet not found (from service layer)")
 		}
 		return nil, err
 	}
@@ -170,12 +190,14 @@ func (s *Service) GetWalletByPhoneNumber(ctx context.Context, phoneNumber string
 }
 
 func (s *Service) GetWalletByID(ctx context.Context, walletID string) (*GetWalletResponse, error) {
+	ctx, span := otel.Tracer("wallet-service").Start(ctx, "GetWalletByID")
+	defer span.End()
 	log := logger.Ctx(ctx)
 
 	wallet, err := s.repo.GetWalletByID(ctx, walletID)
 	if err != nil {
 		if errors.Is(err, ErrWalletNotFound) {
-			log.Warn().Err(err).Str("wallet_id", walletID).Msg("Wallet not found (from service layer)")
+			log.Warn().Err(err).Msg("Wallet not found (from service layer)")
 		}
 		return nil, err
 	}
@@ -196,6 +218,8 @@ func (s *Service) GetWalletByID(ctx context.Context, walletID string) (*GetWalle
 
 // fully idempotent consistent function
 func (s *Service) ModifyWalletBalance(ctx context.Context, phoneNumber string, amount int64, refID string) (*UpdateWalletBalanceResponse, error) {
+	ctx, span := otel.Tracer("wallet-service").Start(ctx, "ModifyWalletBalance")
+	defer span.End()
 
 	log := logger.Ctx(ctx)
 
@@ -211,15 +235,15 @@ func (s *Service) ModifyWalletBalance(ctx context.Context, phoneNumber string, a
 	result, err := s.repo.UpdateWalletBalance(ctx, phoneNumber, amount, refID)
 	if err != nil {
 		if errors.Is(err, ErrExceedsMaxBalance) {
-			log.Warn().Err(err).Str("phone_number", phoneNumber).Msg("Wallet exceeds maximum balance (from service layer)")
+			log.Warn().Err(err).Msg("Wallet exceeds maximum balance (from service layer)")
 		} else if errors.Is(err, ErrInsufficientBalance) {
-			log.Warn().Err(err).Str("phone_number", phoneNumber).Msg("Insufficient balance (from service layer)")
+			log.Warn().Err(err).Msg("Insufficient balance (from service layer)")
 		}
 		log.Error().Msg("Couldn't update the wallet balance (from service)")
 		return nil, err
 	}
 
-	log.Info().Str("phone_number", phoneNumber).Int64("new_balance", result.Balance).Msg("Wallet balance updated successfully (from service layer)")
+	log.Debug().Msg("Wallet balance updated successfully (from service layer)")
 
 	return &UpdateWalletBalanceResponse{
 		WalletID:  result.ID.Hex(),
@@ -230,49 +254,66 @@ func (s *Service) ModifyWalletBalance(ctx context.Context, phoneNumber string, a
 
 // interface for the consumer to use
 func (s *Service) ProcessTransactionEvent(ctx context.Context, evt TransactionEvent) error {
+	ctx, span := otel.Tracer("wallet-service").Start(ctx, "ProcessTransactionEvent")
+	defer span.End()
 	log := logger.Ctx(ctx)
 	_, err := s.ModifyWalletBalance(ctx, evt.PhoneNumber, evt.BalanceAfter, evt.ID)
 	if err != nil {
-		log.Error().Err(err).Str("wallet_id", evt.WalletID).Str("event_id", evt.ID).Msg("Failed to process transaction event")
+		log.Error().Err(err).Msg("Failed to process transaction event")
 		return err
 	}
 	cached, err := s.rdb.HGetAll(ctx, "wallet:"+evt.WalletID).Result()
 	if err != nil {
-		log.Error().Err(err).Str("wallet_id", evt.WalletID).Msg("Failed to get wallet from Redis cache")
+		metrics.RedisOperationsTotal.WithLabelValues("read", "error").Inc()
+		log.Error().Err(err).Msg("Failed to get wallet from Redis cache")
 		return nil // if redis is down return
 	}
 	if len(cached) == 0 {
-		s.rdb.HSet(ctx, "wallet:"+evt.WalletID, "balance", evt.BalanceAfter, "last_time", evt.OccurredAt)
+		metrics.RedisOperationsTotal.WithLabelValues("read", "miss").Inc()
+		if err := s.rdb.HSet(ctx, "wallet:"+evt.WalletID, "balance", evt.BalanceAfter, "last_time", evt.OccurredAt).Err(); err != nil {
+			metrics.RedisOperationsTotal.WithLabelValues("write", "error").Inc()
+		} else {
+			metrics.RedisOperationsTotal.WithLabelValues("write", "success").Inc()
+		}
 		return nil // if the wallet is not in the cache, set it and return
 	}
+	metrics.RedisOperationsTotal.WithLabelValues("read", "hit").Inc()
 	last, err := strconv.ParseInt(cached["last_time"], 10, 64)
 	if err != nil {
-		log.Error().Err(err).Str("wallet_id", evt.WalletID).Msg("Failed to parse last_time from Redis cache")
+		log.Error().Err(err).Msg("Failed to parse last_time from Redis cache")
 	}
 
 	// conpare the event time with the last cashed balance (idempotency against the processed events
 	if evt.OccurredAt >= last { // OccurredAt = created_at millis from dto.go
-		s.rdb.HSet(ctx, "wallet:"+evt.WalletID, "balance", evt.BalanceAfter, "last_time", evt.OccurredAt)
+		if err := s.rdb.HSet(ctx, "wallet:"+evt.WalletID, "balance", evt.BalanceAfter, "last_time", evt.OccurredAt).Err(); err != nil {
+			metrics.RedisOperationsTotal.WithLabelValues("write", "error").Inc()
+		} else {
+			metrics.RedisOperationsTotal.WithLabelValues("write", "success").Inc()
+		}
 	}
 	// else: skip = duplicate or old replay
 	return nil
 }
 
 func (s *Service) GetWalletBalance(ctx context.Context, walletID string) (*GetWalletBalanceResponse, error) {
+	ctx, span := otel.Tracer("wallet-service").Start(ctx, "GetWalletBalance")
+	defer span.End()
 	log := logger.Ctx(ctx)
 	m, err := s.rdb.HGetAll(ctx, "wallet:"+walletID).Result()
 	if err != nil {
-		log.Error().Err(err).Str("wallet_id", walletID).Msg("Failed to get wallet from Redis cache")
+		metrics.RedisOperationsTotal.WithLabelValues("read", "error").Inc()
+		log.Error().Err(err).Msg("Failed to get wallet from Redis cache")
 	}
 	if len(m) != 0 {
+		metrics.RedisOperationsTotal.WithLabelValues("read", "hit").Inc()
 		balance, err := strconv.ParseInt(m["balance"], 10, 64)
 		if err != nil {
-			log.Error().Err(err).Str("wallet_id", walletID).Msg("Failed to parse balance from Redis cache")
+			log.Error().Err(err).Msg("Failed to parse balance from Redis cache")
 			return nil, err
 		}
 		updatedAtMillis, err := strconv.ParseInt(m["last_time"], 10, 64)
 		if err != nil {
-			log.Error().Err(err).Str("wallet_id", walletID).Msg("Failed to parse last_time from Redis cache")
+			log.Error().Err(err).Msg("Failed to parse last_time from Redis cache")
 			return nil, err
 		}
 		return &GetWalletBalanceResponse{
@@ -280,16 +321,23 @@ func (s *Service) GetWalletBalance(ctx context.Context, walletID string) (*GetWa
 			UpdatedAt: time.UnixMilli(updatedAtMillis),
 		}, nil
 	} // HIT
+	if err == nil {
+		metrics.RedisOperationsTotal.WithLabelValues("read", "miss").Inc()
+	}
 	w, err := s.repo.GetWalletByID(ctx, walletID) // MISS
 	if err != nil {
 		if errors.Is(err, ErrWalletNotFound) {
-			log.Warn().Err(err).Str("wallet_id", walletID).Msg("Wallet not found (from service layer)")
+			log.Warn().Err(err).Msg("Wallet not found (from service layer)")
 		} else if errors.Is(err, ErrInvalidWalletID) {
-			log.Warn().Err(err).Str("wallet_id", walletID).Msg("Invalid wallet ID (from service layer)")
+			log.Warn().Err(err).Msg("Invalid wallet ID (from service layer)")
 		}
 		return nil, err
 	}
-	s.rdb.HSet(ctx, "wallet:"+walletID, "balance", w.Balance, "last_time", w.UpdatedAt.UnixMilli())
+	if err := s.rdb.HSet(ctx, "wallet:"+walletID, "balance", w.Balance, "last_time", w.UpdatedAt.UnixMilli()).Err(); err != nil {
+		metrics.RedisOperationsTotal.WithLabelValues("write", "error").Inc()
+	} else {
+		metrics.RedisOperationsTotal.WithLabelValues("write", "success").Inc()
+	}
 	return &GetWalletBalanceResponse{
 		Balance:   w.Balance,
 		UpdatedAt: w.UpdatedAt,

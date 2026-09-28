@@ -26,9 +26,15 @@ import (
 )
 
 func main() {
+	// Load local configuration before logging and tracing read the environment.
+	envErr := godotenv.Load(".ENV")
+
 	// Initialize logger
 	logger.InitLogger("svc-wallet")
 	logger.Log.Info().Msg("Starting svc-wallet ...")
+	if envErr != nil {
+		logger.Log.Debug().Msg("No .ENV file found, relying on os environment")
+	}
 
 	// init the tracer with OTLP endpoint for Jaeger
 	otlpEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
@@ -38,15 +44,12 @@ func main() {
 	}
 
 	defer func() {
-		if err := tp.Shutdown(context.Background()); err != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := tp.Shutdown(shutdownCtx); err != nil {
 			logger.Log.Error().Err(err).Msg("Failed to shutdown tracer")
 		}
 	}()
-
-	// load .ENV file
-	if err := godotenv.Load(".ENV"); err != nil {
-		logger.Log.Info().Msg("No .ENV file found, relying on os environment") // because when using docker env variables will be injected
-	}
 
 	// coneect the port
 	port := os.Getenv("SERVER_PORT")
@@ -167,6 +170,7 @@ func main() {
 	// Initialize the gRPC server
 	grpcServer := grpc.NewServer(
 		grpc.StatsHandler(otelgrpc.NewServerHandler()), // adding the grpc interceptor
+		grpc.UnaryInterceptor(grpcserver.ObservabilityInterceptor),
 		// to extract the trace id from the incoming requests
 	)
 	myWalletServer := grpcserver.NewWalletServer(service)

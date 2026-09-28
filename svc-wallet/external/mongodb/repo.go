@@ -12,6 +12,11 @@ import (
 	//project imports
 	"svc-wallet/internal/wallet"
 	"svc-wallet/util/logger"
+	"svc-wallet/util/metrics"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type mongoRepository struct {
@@ -22,6 +27,8 @@ type mongoRepository struct {
 //
 //	returns a repository interface (to make the service layer interact only with the interface functions)
 func NewWalletRepository(ctx context.Context, db *mongo.Database) (wallet.Repository, error) {
+	ctx, done := startMongoOperation(ctx, "create_indexes")
+	defer done()
 	log := logger.Ctx(ctx)
 	coll := db.Collection("wallets") // this is the collection in the mongo database where the wallets are stored
 	// configure the phone number to be unique
@@ -37,6 +44,7 @@ func NewWalletRepository(ctx context.Context, db *mongo.Database) (wallet.Reposi
 	})
 
 	if err != nil {
+		recordMongoError(ctx, err)
 		// Return the error to main.go so it can decide how to handle the failure
 		log.Error().Err(err).Msg("Failed to create wallet indexes (from repo layer)")
 		return nil, err
@@ -46,6 +54,8 @@ func NewWalletRepository(ctx context.Context, db *mongo.Database) (wallet.Reposi
 }
 
 func (r *mongoRepository) CreateWallet(ctx context.Context, w *wallet.Wallet) error {
+	ctx, done := startMongoOperation(ctx, "insert_wallet")
+	defer done()
 	log := logger.Ctx(ctx)
 	result, err := r.collection.InsertOne(ctx, w) // this is the method that
 	// will insert the wallet into the collection in the mongo database
@@ -58,6 +68,7 @@ func (r *mongoRepository) CreateWallet(ctx context.Context, w *wallet.Wallet) er
 			// service will handle this
 			return wallet.ErrDuplicatePhone // return the domain error for duplicate phone number
 		}
+		recordMongoError(ctx, err)
 		log.Error().Err(err).Msg("Failed to insert wallet (from repo layer)")
 		return err // return any other error
 	}
@@ -66,6 +77,8 @@ func (r *mongoRepository) CreateWallet(ctx context.Context, w *wallet.Wallet) er
 }
 
 func (r *mongoRepository) GetWalletByPhoneNumber(ctx context.Context, phoneNumber string) (*wallet.Wallet, error) {
+	ctx, done := startMongoOperation(ctx, "find_by_phone")
+	defer done()
 	log := logger.Ctx(ctx)
 	var resWallet wallet.Wallet
 	err := r.collection.FindOne(ctx, bson.M{"phone_number": phoneNumber}).Decode(&resWallet)
@@ -73,6 +86,7 @@ func (r *mongoRepository) GetWalletByPhoneNumber(ctx context.Context, phoneNumbe
 		if err == mongo.ErrNoDocuments {
 			return nil, wallet.ErrWalletNotFound // return the domain error for wallet not found
 		}
+		recordMongoError(ctx, err)
 		log.Error().Err(err).Msg("Failed to find wallet by phone number (from repo layer)")
 		return nil, err // return any other error
 	}
@@ -81,6 +95,8 @@ func (r *mongoRepository) GetWalletByPhoneNumber(ctx context.Context, phoneNumbe
 
 // may be refactored in phase 2 to use transactions and atomic operations
 func (r *mongoRepository) UpdateWalletBalance(ctx context.Context, phoneNumber string, amount int64, refID string) (*wallet.Wallet, error) {
+	ctx, done := startMongoOperation(ctx, "update_balance")
+	defer done()
 	log := logger.Ctx(ctx)
 	// this is the method that will update the balance of the wallet in the collection in the mongo database
 	var updatedWallet wallet.Wallet
@@ -141,6 +157,7 @@ func (r *mongoRepository) UpdateWalletBalance(ctx context.Context, phoneNumber s
 		// 	// then it is not processed
 		// 	return nil, retError // return the domain error for wallet not found
 		// }
+		recordMongoError(ctx, err)
 		log.Error().Err(err).Msg("Failed to update the wallet balance (from repo layer)")
 		return nil, err // return any other error
 	}
@@ -149,6 +166,8 @@ func (r *mongoRepository) UpdateWalletBalance(ctx context.Context, phoneNumber s
 }
 
 func (r *mongoRepository) GetWalletByID(ctx context.Context, walletID string) (*wallet.Wallet, error) {
+	ctx, done := startMongoOperation(ctx, "find_by_id")
+	defer done()
 	log := logger.Ctx(ctx)
 	var resWallet wallet.Wallet
 	walletObjID, err := primitive.ObjectIDFromHex(walletID)
@@ -161,6 +180,7 @@ func (r *mongoRepository) GetWalletByID(ctx context.Context, walletID string) (*
 		if err == mongo.ErrNoDocuments {
 			return nil, wallet.ErrWalletNotFound // return the domain error for wallet not found
 		}
+		recordMongoError(ctx, err)
 		log.Error().Err(err).Msg("Failed to find wallet by wallet id(from repo layer)")
 		return nil, err // return any other error
 	}
@@ -168,30 +188,37 @@ func (r *mongoRepository) GetWalletByID(ctx context.Context, walletID string) (*
 }
 
 func (r *mongoRepository) GetWalletsByUserID(ctx context.Context, userID string) ([]wallet.Wallet, error) {
+	ctx, done := startMongoOperation(ctx, "find_by_user")
+	defer done()
 	userObjID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
 		return nil, wallet.ErrInvalidUserID
 	}
 	cursor, err := r.collection.Find(ctx, bson.M{"user_id": userObjID}, options.Find().SetSort(bson.D{{Key: "created_at", Value: 1}}))
 	if err != nil {
+		recordMongoError(ctx, err)
 		return nil, err
 	}
 	defer cursor.Close(ctx)
 
 	wallets := make([]wallet.Wallet, 0)
 	if err := cursor.All(ctx, &wallets); err != nil {
+		recordMongoError(ctx, err)
 		return nil, err
 	}
 	return wallets, nil
 }
 
 func (r *mongoRepository) DeleteWallet(ctx context.Context, walletID string) error {
+	ctx, done := startMongoOperation(ctx, "delete_wallet")
+	defer done()
 	walletObjID, err := primitive.ObjectIDFromHex(walletID)
 	if err != nil {
 		return wallet.ErrInvalidWalletID
 	}
 	result, err := r.collection.DeleteOne(ctx, bson.M{"_id": walletObjID})
 	if err != nil {
+		recordMongoError(ctx, err)
 		return err
 	}
 	if result.DeletedCount == 0 {
@@ -201,12 +228,15 @@ func (r *mongoRepository) DeleteWallet(ctx context.Context, walletID string) err
 }
 
 func (r *mongoRepository) DeleteUserWallets(ctx context.Context, userID string) ([]string, error) {
+	ctx, done := startMongoOperation(ctx, "delete_user_wallets")
+	defer done()
 	userObjID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
 		return nil, wallet.ErrInvalidUserID
 	}
 	cursor, err := r.collection.Find(ctx, bson.M{"user_id": userObjID}, options.Find().SetProjection(bson.M{"_id": 1}))
 	if err != nil {
+		recordMongoError(ctx, err)
 		return nil, err
 	}
 	defer cursor.Close(ctx)
@@ -215,9 +245,11 @@ func (r *mongoRepository) DeleteUserWallets(ctx context.Context, userID string) 
 		ID primitive.ObjectID `bson:"_id"`
 	}
 	if err := cursor.All(ctx, &rows); err != nil {
+		recordMongoError(ctx, err)
 		return nil, err
 	}
 	if _, err := r.collection.DeleteMany(ctx, bson.M{"user_id": userObjID}); err != nil {
+		recordMongoError(ctx, err)
 		return nil, err
 	}
 	walletIDs := make([]string, len(rows))
@@ -225,4 +257,19 @@ func (r *mongoRepository) DeleteUserWallets(ctx context.Context, userID string) 
 		walletIDs[i] = row.ID.Hex()
 	}
 	return walletIDs, nil
+}
+
+func startMongoOperation(ctx context.Context, operation string) (context.Context, func()) {
+	ctx, span := otel.Tracer("wallet-repository").Start(ctx, operation)
+	start := time.Now()
+	return ctx, func() {
+		metrics.MongoOperationDuration.WithLabelValues(operation, "wallets").Observe(time.Since(start).Seconds())
+		span.End()
+	}
+}
+
+func recordMongoError(ctx context.Context, err error) {
+	span := trace.SpanFromContext(ctx)
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
 }

@@ -179,6 +179,9 @@ MONGO_DB_NAME=wallet_db
 KAFKA_BROKERS=localhost:9092
 KAFKA_GROUP_ID=wallet-balance-consumer
 KAFKA_TOPIC=transactions_db.transactions
+REDIS_ADDR=localhost:6379
+APP_ENV=development
+OTEL_EXPORTER_OTLP_ENDPOINT=localhost:4318
 ```
 
 | Variable | Required | Default | Description |
@@ -190,6 +193,16 @@ KAFKA_TOPIC=transactions_db.transactions
 | `KAFKA_BROKERS` | ✅ | — | Kafka broker addresses (e.g. `localhost:9092` or `kafka:9092`) |
 | `KAFKA_GROUP_ID` | ✅ | — | Consumer group ID for CDC balance synchronization |
 | `KAFKA_TOPIC` | ✅ | — | Kafka topic containing transaction CDC events (`transactions_db.transactions`) |
+| `REDIS_ADDR` | ❌ | `localhost:6379` | Redis address used by the balance cache |
+| `APP_ENV` | ❌ | `development` | Uses JSON/info logging when set to `production`; otherwise uses debug console logging |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | ❌ | — | OTLP HTTP collector address, such as `jaeger:4318`; tracing remains local when omitted |
+
+### Observability
+
+- gRPC logs and metrics include the method, result code, and duration. Correlated logs include `trace_id` and `span_id`.
+- Service and MongoDB repository work appears as child spans of incoming gRPC traces. Kafka messages start independent traces because CDC records do not currently carry upstream trace context.
+- `/metrics` exposes bounded-label HTTP/gRPC latency and request counts, MongoDB operation duration, Redis outcomes, and Kafka outcome/retry/duration metrics. IDs and phone numbers are not metric labels.
+- Kafka errors log topic, partition, and offset without logging the raw message payload.
 
 ### Run Locally
 
