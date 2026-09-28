@@ -8,21 +8,24 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-// any validation of thre request should be done in the handler and not in the service layer
+// Service methods validate transport-independent business inputs so every
+// transport, including gRPC, follows the same rules.
 
 type Service struct {
 	repo Repository // this is the repository layer that will be used to interact with the database
-	rdb *redis.Client
+	rdb  *redis.Client
 }
+
 func NewService(repo Repository, rc *redis.Client) *Service {
 	return &Service{repo: repo, rdb: rc}
 }
 
 func (s *Service) CreateWallet(ctx context.Context, req *CreateWalletRequest) (*CreateWalletResponse, error) {
 	log := logger.Ctx(ctx)
-	// the request is validated in the handler
+	// the request is validated in the REST handler (currently disabled)
 
 	//  29011012345678
 	var year string
@@ -71,6 +74,74 @@ func (s *Service) CreateWallet(ctx context.Context, req *CreateWalletRequest) (*
 
 	return response, nil
 
+}
+
+func (s *Service) CreateUserWallet(ctx context.Context, userID, phoneNumber string) (*CreateWalletResponse, error) {
+	userObjID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return nil, ErrInvalidUserID
+	}
+	if err := ValidatePhoneNumber(&phoneNumber); err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	w := &Wallet{
+		UserID:        userObjID,
+		PhoneNumber:   phoneNumber,
+		Balance:       0,
+		CurrencyCode:  "EGP",
+		ProcessedRefs: make([]string, 0),
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	if err := s.repo.CreateWallet(ctx, w); err != nil {
+		return nil, err
+	}
+	return &CreateWalletResponse{WalletID: w.ID.Hex(), Balance: w.Balance, CreatedAt: w.CreatedAt}, nil
+}
+
+func (s *Service) GetUserWallets(ctx context.Context, userID string) ([]Wallet, error) {
+	if _, err := primitive.ObjectIDFromHex(userID); err != nil {
+		return nil, ErrInvalidUserID
+	}
+	return s.repo.GetWalletsByUserID(ctx, userID)
+}
+
+func (s *Service) DeleteWallet(ctx context.Context, walletID string) error {
+	if _, err := primitive.ObjectIDFromHex(walletID); err != nil {
+		return ErrInvalidWalletID
+	}
+	if err := s.repo.DeleteWallet(ctx, walletID); err != nil {
+		return err
+	}
+	if err := s.rdb.Del(ctx, "wallet:"+walletID).Err(); err != nil {
+		log := logger.Ctx(ctx)
+		log.Warn().Err(err).Str("wallet_id", walletID).Msg("Failed to invalidate deleted wallet cache")
+	}
+	return nil
+}
+
+func (s *Service) DeleteUserWallets(ctx context.Context, userID string) error {
+	if _, err := primitive.ObjectIDFromHex(userID); err != nil {
+		return ErrInvalidUserID
+	}
+	walletIDs, err := s.repo.DeleteUserWallets(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if len(walletIDs) == 0 {
+		return nil
+	}
+	keys := make([]string, len(walletIDs))
+	for i, walletID := range walletIDs {
+		keys[i] = "wallet:" + walletID
+	}
+	if err := s.rdb.Del(ctx, keys...).Err(); err != nil {
+		log := logger.Ctx(ctx)
+		log.Warn().Err(err).Str("user_id", userID).Msg("Failed to invalidate deleted wallet caches")
+	}
+	return nil
 }
 
 func (s *Service) GetWalletByPhoneNumber(ctx context.Context, phoneNumber string) (*GetWalletResponse, error) {
@@ -180,8 +251,8 @@ func (s *Service) ProcessTransactionEvent(ctx context.Context, evt TransactionEv
 	}
 
 	// conpare the event time with the last cashed balance (idempotency against the processed events
-	if evt.OccurredAt >= last {  // OccurredAt = created_at millis from dto.go
-    	s.rdb.HSet(ctx, "wallet:"+evt.WalletID, "balance", evt.BalanceAfter, "last_time", evt.OccurredAt)
+	if evt.OccurredAt >= last { // OccurredAt = created_at millis from dto.go
+		s.rdb.HSet(ctx, "wallet:"+evt.WalletID, "balance", evt.BalanceAfter, "last_time", evt.OccurredAt)
 	}
 	// else: skip = duplicate or old replay
 	return nil
@@ -193,7 +264,7 @@ func (s *Service) GetWalletBalance(ctx context.Context, walletID string) (*GetWa
 	if err != nil {
 		log.Error().Err(err).Str("wallet_id", walletID).Msg("Failed to get wallet from Redis cache")
 	}
-	if len(m) != 0 { 
+	if len(m) != 0 {
 		balance, err := strconv.ParseInt(m["balance"], 10, 64)
 		if err != nil {
 			log.Error().Err(err).Str("wallet_id", walletID).Msg("Failed to parse balance from Redis cache")
@@ -205,23 +276,22 @@ func (s *Service) GetWalletBalance(ctx context.Context, walletID string) (*GetWa
 			return nil, err
 		}
 		return &GetWalletBalanceResponse{
-			Balance: balance,
+			Balance:   balance,
 			UpdatedAt: time.UnixMilli(updatedAtMillis),
 		}, nil
-	 }  // HIT
-	w, err := s.repo.GetWalletByID(ctx, walletID)     // MISS
+	} // HIT
+	w, err := s.repo.GetWalletByID(ctx, walletID) // MISS
 	if err != nil {
 		if errors.Is(err, ErrWalletNotFound) {
 			log.Warn().Err(err).Str("wallet_id", walletID).Msg("Wallet not found (from service layer)")
 		} else if errors.Is(err, ErrInvalidWalletID) {
 			log.Warn().Err(err).Str("wallet_id", walletID).Msg("Invalid wallet ID (from service layer)")
 		}
-		log.Error().Err(err).Str("wallet_id", walletID).Msg("Failed to get wallet from database")
 		return nil, err
 	}
 	s.rdb.HSet(ctx, "wallet:"+walletID, "balance", w.Balance, "last_time", w.UpdatedAt.UnixMilli())
 	return &GetWalletBalanceResponse{
-		Balance: w.Balance,
+		Balance:   w.Balance,
 		UpdatedAt: w.UpdatedAt,
 	}, nil
 }

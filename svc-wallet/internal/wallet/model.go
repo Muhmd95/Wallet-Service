@@ -14,6 +14,7 @@ type Wallet struct {
 	// used bson and not bson and json to not expose it
 	// to the outside world as the DTO will be used for that purpose
 	ID           primitive.ObjectID  `bson:"_id,omitempty"`
+	UserID       primitive.ObjectID  `bson:"user_id"`
 	PhoneNumber  string              `bson:"phone_number"`
 	OwnerName    string              `bson:"owner_name"`
 	Balance      int64               `bson:"balance"`
@@ -40,6 +41,7 @@ var (
 	ErrExceedsMaxBalance   = errors.New("deposit exceeds maximum wallet capacity")
 	ErrInvalidNationalID   = errors.New("invalid national id format")
 	ErrInvalidWalletID     = errors.New("invalid wallet id format")
+	ErrInvalidUserID       = errors.New("invalid user id format")
 )
 
 // wallet max
