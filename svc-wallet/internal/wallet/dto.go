@@ -39,6 +39,10 @@ type GetWalletResponse struct {
 	NationalID   string    `json:"national_id"`
 	BirthDate    time.Time `json:"birth_date"`
 }
+type GetWalletBalanceResponse struct {
+	Balance 	int64 		`json:"balance"`
+	UpdatedAt 	time.Time 	`json:"updated_at"`
+}
 
 // old dtos not useed (were used by the rest api)
 type UpdateWalletBalanceRequest struct {

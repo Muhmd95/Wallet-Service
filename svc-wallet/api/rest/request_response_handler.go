@@ -203,6 +203,65 @@ func (c *WalletController) GetWalletByID(w http.ResponseWriter, r *http.Request)
 
 }
 
+// GetWalletBalance retrieves the balance of an existing wallet by wallet id.
+// @Summary      Retrieve a wallet's balance
+// @Description  Fetches the wallet balance using the provided wallet ID.
+// @Tags         Wallet
+// @Accept       json
+// @Produce      json
+// @Param        wallet_id  path     string  true  "Wallet ID"
+// @Success      200           {object}  wallet.GetWalletBalanceResponse "Wallet balance retrieved successfully"
+// @Failure      400           {object}  map[string]string        "Bad Request (Invalid wallet ID format)"
+// @Failure      404           {object}  map[string]string        "Wallet Not Found"
+// @Failure      500           {object}  map[string]string        "Internal Server Error"
+// @Router       /wallet/balance/{wallet_id} [get]
+func (c *WalletController) GetBalanceByWalletID(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	ctx := r.Context()
+	log := logger.Ctx(ctx)
+
+	if r.Method != http.MethodGet {
+		log.Warn().Msg("Method not allowed")
+		respondWithError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	walletID := r.PathValue("wallet_id")
+
+	log.Info().Str("wallet_id", walletID).Msg("Retrieving wallet balance by wallet ID")
+
+	getResponse, err := c.service.GetWalletBalance(ctx, walletID)
+	if err != nil {	
+		if errors.Is(err, wallet.ErrWalletNotFound) { // dont leak database errors
+			//log.Warn().Err(err).Str("phone_number", phoneNumber).Msg("Failed to get wallet by phone number")
+			respondWithError(w, http.StatusNotFound, err.Error())
+			return
+		} else if errors.Is(err, wallet.ErrInvalidWalletID) {
+			log.Warn().Err(err).Msg("Invalid wallet id")
+			respondWithError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		//log.Error().Err(err).Msg("Failed to get wallet")
+		respondWithError(w, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+
+	responseData, err := json.Marshal(getResponse)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to marshal response")
+		respondWithError(w, http.StatusInternalServerError, "Failed to marshal response")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(responseData)
+
+	log.Info().Str("wallet_id", walletID).Msg("Get wallet balance response sent successfully")
+
+}
+
+
 // helper function to return errors and json response to the client
 func respondWithError(w http.ResponseWriter, code int, message string) {
 	w.Header().Set("Content-Type", "application/json")

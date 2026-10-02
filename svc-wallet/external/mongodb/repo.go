@@ -25,15 +25,20 @@ func NewWalletRepository(ctx context.Context, db *mongo.Database) (wallet.Reposi
 	log := logger.Ctx(ctx)
 	coll := db.Collection("wallets") // this is the collection in the mongo database where the wallets are stored
 	// configure the phone number to be unique
-	_, err := coll.Indexes().CreateOne(ctx, mongo.IndexModel{ // creating an index on phnumber, passing ctx to track the time
-		Keys:    bson.M{"phone_number": 1},                               // this is the index on the phone number field, 1 means ascending order
-		Options: options.Index().SetUnique(true).SetName("unique_phone"), // this is the name of the index and it is unique so
-		//that no two wallets can have the same phone number
+	_, err := coll.Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{
+			Keys:    bson.D{{Key: "phone_number", Value: 1}},
+			Options: options.Index().SetUnique(true).SetName("unique_phone"),
+		},
+		{
+			Keys:    bson.D{{Key: "user_id", Value: 1}},
+			Options: options.Index().SetName("wallets_by_user"),
+		},
 	})
 
 	if err != nil {
 		// Return the error to main.go so it can decide how to handle the failure
-		log.Error().Err(err).Msg("Failed to create unique index on phone_number (from repo layer)")
+		log.Error().Err(err).Msg("Failed to create wallet indexes (from repo layer)")
 		return nil, err
 	}
 	return &mongoRepository{collection: coll}, nil // return the mongoRepository struct with the collection (this is a repository)
@@ -160,4 +165,64 @@ func (r *mongoRepository) GetWalletByID(ctx context.Context, walletID string) (*
 		return nil, err // return any other error
 	}
 	return &resWallet, nil
+}
+
+func (r *mongoRepository) GetWalletsByUserID(ctx context.Context, userID string) ([]wallet.Wallet, error) {
+	userObjID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return nil, wallet.ErrInvalidUserID
+	}
+	cursor, err := r.collection.Find(ctx, bson.M{"user_id": userObjID}, options.Find().SetSort(bson.D{{Key: "created_at", Value: 1}}))
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	wallets := make([]wallet.Wallet, 0)
+	if err := cursor.All(ctx, &wallets); err != nil {
+		return nil, err
+	}
+	return wallets, nil
+}
+
+func (r *mongoRepository) DeleteWallet(ctx context.Context, walletID string) error {
+	walletObjID, err := primitive.ObjectIDFromHex(walletID)
+	if err != nil {
+		return wallet.ErrInvalidWalletID
+	}
+	result, err := r.collection.DeleteOne(ctx, bson.M{"_id": walletObjID})
+	if err != nil {
+		return err
+	}
+	if result.DeletedCount == 0 {
+		return wallet.ErrWalletNotFound
+	}
+	return nil
+}
+
+func (r *mongoRepository) DeleteUserWallets(ctx context.Context, userID string) ([]string, error) {
+	userObjID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return nil, wallet.ErrInvalidUserID
+	}
+	cursor, err := r.collection.Find(ctx, bson.M{"user_id": userObjID}, options.Find().SetProjection(bson.M{"_id": 1}))
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var rows []struct {
+		ID primitive.ObjectID `bson:"_id"`
+	}
+	if err := cursor.All(ctx, &rows); err != nil {
+		return nil, err
+	}
+	if _, err := r.collection.DeleteMany(ctx, bson.M{"user_id": userObjID}); err != nil {
+		return nil, err
+	}
+	walletIDs := make([]string, len(rows))
+	for i, row := range rows {
+		walletIDs[i] = row.ID.Hex()
+	}
+	return walletIDs, nil
 }

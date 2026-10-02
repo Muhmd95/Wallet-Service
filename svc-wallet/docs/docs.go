@@ -76,6 +76,65 @@ const docTemplate = `{
                 }
             }
         },
+        "/wallet/balance/{wallet_id}": {
+            "get": {
+                "description": "Fetches the wallet balance using the provided wallet ID.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Wallet"
+                ],
+                "summary": "Retrieve a wallet's balance",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Wallet ID",
+                        "name": "wallet_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Wallet balance retrieved successfully",
+                        "schema": {
+                            "$ref": "#/definitions/wallet.GetWalletBalanceResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request (Invalid wallet ID format)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Wallet Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/wallet/phone/{phone_number}": {
             "get": {
                 "description": "Fetches the wallet details using the provided phone number query parameter.",
@@ -231,6 +290,17 @@ const docTemplate = `{
                 },
                 "wallet_id": {
                     "description": "note that this is a string and not an ObjectID because",
+                    "type": "string"
+                }
+            }
+        },
+        "wallet.GetWalletBalanceResponse": {
+            "type": "object",
+            "properties": {
+                "balance": {
+                    "type": "integer"
+                },
+                "updated_at": {
                     "type": "string"
                 }
             }

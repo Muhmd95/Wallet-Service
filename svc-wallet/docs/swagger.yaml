@@ -29,6 +29,13 @@ definitions:
         description: note that this is a string and not an ObjectID because
         type: string
     type: object
+  wallet.GetWalletBalanceResponse:
+    properties:
+      balance:
+        type: integer
+      updated_at:
+        type: string
+    type: object
   wallet.GetWalletResponse:
     properties:
       balance:
@@ -134,6 +141,45 @@ paths:
               type: string
             type: object
       summary: Retrieve a wallet
+      tags:
+      - Wallet
+  /wallet/balance/{wallet_id}:
+    get:
+      consumes:
+      - application/json
+      description: Fetches the wallet balance using the provided wallet ID.
+      parameters:
+      - description: Wallet ID
+        in: path
+        name: wallet_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Wallet balance retrieved successfully
+          schema:
+            $ref: '#/definitions/wallet.GetWalletBalanceResponse'
+        "400":
+          description: Bad Request (Invalid wallet ID format)
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Wallet Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Retrieve a wallet's balance
       tags:
       - Wallet
   /wallet/phone/{phone_number}:

@@ -20,4 +20,10 @@ type Repository interface {
 	UpdateWalletBalance(ctx context.Context, phoneNumber string, amount int64, refID string) (*Wallet, error)
 
 	GetWalletByID(ctx context.Context, walletID string) (*Wallet, error)
+
+	GetWalletsByUserID(ctx context.Context, userID string) ([]Wallet, error)
+
+	DeleteWallet(ctx context.Context, walletID string) error
+
+	DeleteUserWallets(ctx context.Context, userID string) ([]string, error)
 }
