@@ -82,7 +82,7 @@ func RequestLogger(next http.Handler) http.Handler {
 		// Build the enriched log entry
 		event.
 			Str("method", r.Method).
-			Str("path", r.URL.Path).
+			Str("route", routePattern(r)).
 			Int("status", recorder.statusCode).
 			Dur("duration", duration).
 			Int64("bytes_read", bytesRead).
@@ -121,11 +121,19 @@ func MetricsMiddleware(next http.Handler) http.Handler {
 		duration := time.Since(start).Seconds()
 		status := strconv.Itoa(recorder.statusCode)
 
-		metrics.HTTPRequestsTotal.WithLabelValues(r.Method, r.URL.Path, status).Inc()
-		metrics.HTTPRequestDuration.WithLabelValues(r.Method, r.URL.Path).Observe(duration)
-		metrics.HTTPRequestBytesRead.WithLabelValues(r.Method, r.URL.Path).Observe(float64(bytesRead))
-		metrics.HTTPResponseBytesWritten.WithLabelValues(r.Method, r.URL.Path).Observe(float64(recorder.bytesWritten))
+		route := routePattern(r)
+		metrics.HTTPRequestsTotal.WithLabelValues(r.Method, route, status).Inc()
+		metrics.HTTPRequestDuration.WithLabelValues(r.Method, route).Observe(duration)
+		metrics.HTTPRequestBytesRead.WithLabelValues(r.Method, route).Observe(float64(bytesRead))
+		metrics.HTTPResponseBytesWritten.WithLabelValues(r.Method, route).Observe(float64(recorder.bytesWritten))
 	})
+}
+
+func routePattern(r *http.Request) string {
+	if r.Pattern != "" {
+		return r.Pattern
+	}
+	return "unmatched"
 }
 
 // --- Counting Reader ---

@@ -7,9 +7,13 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"svc-wallet/internal/wallet"
 	"svc-wallet/util/logger"
+	"svc-wallet/util/metrics"
 )
 
 const (
@@ -73,11 +77,14 @@ func (h *handler) Setup(sarama.ConsumerGroupSession) error   { return nil }
 func (h *handler) Cleanup(sarama.ConsumerGroupSession) error { return nil }
 
 func (h *handler) ConsumeClaim(s sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
-	log := logger.Ctx(s.Context())
 	for msg := range claim.Messages() {
+		started := time.Now()
+		messageCtx, span := otel.Tracer("wallet-kafka").Start(s.Context(), "ProcessKafkaMessage", trace.WithNewRoot())
+		log := logger.Ctx(messageCtx)
 		var evt wallet.TransactionEvent
 		if err := json.Unmarshal(msg.Value, &evt); err != nil {
 			log.Error().Err(err).Msgf("Failed to unmarshal transaction event: topic=%s partition=%d offset=%d", msg.Topic, msg.Partition, msg.Offset)
+			finishKafkaObservation(span, started, "invalid", err)
 			s.MarkMessage(msg, "") // mark the message as processed to avoid reprocessing
 			continue
 		}
@@ -93,24 +100,42 @@ func (h *handler) ConsumeClaim(s sarama.ConsumerGroupSession, claim sarama.Consu
 		// tripwire: an empty txn id would poison the dedup index (every event
 		// colliding on transaction_id="") — skip loudly instead of silently
 		if evt.ID == "" {
-			log.Error().Msgf("Transaction event with empty _id, skipping: topic=%s partition=%d offset=%d payload=%s", msg.Topic, msg.Partition, msg.Offset, string(msg.Value))
+			err := errors.New("transaction event has empty id")
+			log.Error().Msgf("Transaction event with empty _id, skipping: topic=%s partition=%d offset=%d", msg.Topic, msg.Partition, msg.Offset)
+			finishKafkaObservation(span, started, "invalid", err)
 			s.MarkMessage(msg, "")
 			continue
 		}
 
 		var err error
 		for i := 0; i < maxRetries; i++ {
-			err = h.processor.ProcessTransactionEvent(s.Context(), evt) // the process is idempotent, so we can retry safely
-			if err == nil {                                             // the process done
+			if i > 0 {
+				metrics.KafkaRetriesTotal.Inc()
+			}
+			err = h.processor.ProcessTransactionEvent(messageCtx, evt) // the process is idempotent, so we can retry safely
+			if err == nil {                                            // the process done
 				break
 			}
 			time.Sleep(retryBackoff)
 		}
 		// log the error and its data as i will skip the msg and commit the offset
 		if err != nil {
-			log.Error().Err(err).Msgf("Failed to process transaction event after %d retries: topic=%s partition=%d offset=%d payload=%s", maxRetries, msg.Topic, msg.Partition, msg.Offset, string(msg.Value))
+			log.Error().Err(err).Msgf("Failed to process transaction event after %d retries: topic=%s partition=%d offset=%d", maxRetries, msg.Topic, msg.Partition, msg.Offset)
+			finishKafkaObservation(span, started, "failed", err)
+		} else {
+			finishKafkaObservation(span, started, "success", nil)
 		}
 		s.MarkMessage(msg, "") // commits after process (at least once delivery)
 	}
 	return nil
+}
+
+func finishKafkaObservation(span trace.Span, started time.Time, outcome string, err error) {
+	metrics.KafkaMessagesTotal.WithLabelValues(outcome).Inc()
+	metrics.KafkaProcessDuration.WithLabelValues(outcome).Observe(time.Since(started).Seconds())
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+	span.End()
 }

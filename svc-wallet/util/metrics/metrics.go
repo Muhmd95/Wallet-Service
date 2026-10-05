@@ -54,4 +54,33 @@ var (
 		},
 		[]string{"operation", "collection"},
 	)
+
+	GRPCRequestsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{Name: "grpc_requests_total", Help: "Total number of gRPC requests"},
+		[]string{"method", "code"},
+	)
+
+	GRPCRequestDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{Name: "grpc_request_duration_seconds", Help: "gRPC request latency", Buckets: prometheus.DefBuckets},
+		[]string{"method", "code"},
+	)
+
+	RedisOperationsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{Name: "redis_operations_total", Help: "Redis operations by operation and outcome"},
+		[]string{"operation", "outcome"},
+	)
+
+	KafkaMessagesTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{Name: "kafka_messages_total", Help: "Kafka messages by processing outcome"},
+		[]string{"outcome"},
+	)
+
+	KafkaRetriesTotal = promauto.NewCounter(
+		prometheus.CounterOpts{Name: "kafka_retries_total", Help: "Total Kafka message processing retries"},
+	)
+
+	KafkaProcessDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{Name: "kafka_process_duration_seconds", Help: "Kafka message processing latency", Buckets: prometheus.DefBuckets},
+		[]string{"outcome"},
+	)
 )

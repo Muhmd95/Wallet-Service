@@ -2,15 +2,19 @@ package grpcserver
 
 import (
 	"context"
-
 	"errors"
+	"time"
+
 	walletv1 "github.com/Muhmd95/Contracts/wallet/v1"
+	"github.com/rs/zerolog"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 
 	"svc-wallet/internal/wallet"
 	"svc-wallet/util/logger"
+	"svc-wallet/util/metrics"
 )
 
 type WalletServer struct {
@@ -21,6 +25,29 @@ type WalletServer struct {
 
 func NewWalletServer(service *wallet.Service) *WalletServer {
 	return &WalletServer{service: service}
+}
+
+func ObservabilityInterceptor(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+	start := time.Now()
+	response, err := handler(ctx, req)
+	code := status.Code(err).String()
+	duration := time.Since(start)
+
+	metrics.GRPCRequestsTotal.WithLabelValues(info.FullMethod, code).Inc()
+	metrics.GRPCRequestDuration.WithLabelValues(info.FullMethod, code).Observe(duration.Seconds())
+
+	log := logger.Ctx(ctx)
+	var event *zerolog.Event
+	switch status.Code(err) {
+	case codes.OK:
+		event = log.Debug()
+	case codes.Internal, codes.Unknown, codes.DataLoss, codes.Unavailable:
+		event = log.Error().Err(err)
+	default:
+		event = log.Warn().Err(err)
+	}
+	event.Str("grpc_method", info.FullMethod).Str("grpc_code", code).Dur("duration", duration).Msg("gRPC request completed")
+	return response, err
 }
 
 func (s *WalletServer) ModifyBalance(ctx context.Context, req *walletv1.ModifyBalanceRequest) (*walletv1.ModifyBalanceResponse, error) {
@@ -42,7 +69,7 @@ func (s *WalletServer) ModifyBalance(ctx context.Context, req *walletv1.ModifyBa
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	log.Info().Str("phone_number", phoneNumber).Int64("amount", amount).Msg("Modifying wallet balance")
+	log.Debug().Msg("Modifying wallet balance")
 
 	modifyResponse, err := s.service.ModifyWalletBalance(ctx, phoneNumber, amount, refID)
 	if err != nil {
@@ -55,7 +82,7 @@ func (s *WalletServer) ModifyBalance(ctx context.Context, req *walletv1.ModifyBa
 		return nil, status.Error(codes.Internal, "Internal server error")
 	}
 
-	log.Info().Str("phone_number", phoneNumber).Msg("Wallet balance modification response sent successfully (from grpc server)")
+	log.Debug().Msg("Wallet balance modification response sent successfully (from grpc server)")
 
 	return &walletv1.ModifyBalanceResponse{
 		WalletId:  modifyResponse.WalletID,

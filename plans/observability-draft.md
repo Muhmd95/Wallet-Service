@@ -1,6 +1,6 @@
 # Wallet observability draft
 
-Status: deferred. Saved for later review; no implementation authorized by this document.
+Status: implemented on 2026-09-28 with minimal instrumentation. No new tests were created, as requested.
 
 Goal: bring Wallet logging, tracing, and metrics up to the Users service conventions, with fixes for gaps shared by both implementations. Adapt this work to the planned Users gateway and Wallet gRPC architecture.
 
