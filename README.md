@@ -1,255 +1,317 @@
-# 💳 Wallet Service (`svc-wallet`)
+## Wallet & Transactions: system at a glance
 
-> **Status:** Internal microservice — Wallet business operations are exposed through gRPC. Port 8000 serves Prometheus metrics only; clients use the Users REST gateway on port 8001.
+This service is part of a larger system for user accounts, wallets, financial transactions, and notifications. **Wallet Service is highlighted below because you are reading its README.**
 
----
+```mermaid
+flowchart LR
+    Client[HTTP client]
 
-## 📌 Overview
+    subgraph Services[Application services]
+        Users["Users Service<br/>Authentication, accounts and wallet gateway"]
+        Wallet["<b>Wallet Service</b><br/>Wallets and balance projection<br/>You are here"]
+        Transactions["Transactions Service<br/>Deposits, withdrawals and transfers"]
+        Notifications["Notifications Service<br/>Push and SMS processing"]
+    end
 
-The **Wallet Service** is a high-performance Go microservice responsible for creating and querying digital wallet accounts. It consumes transaction events from Kafka (via CDC) to synchronize wallet balances, acting as a read-optimized projection of the authoritative ledger maintained by the Transactions Service.
+    Client -->|REST: accounts and wallets| Users
+    Client -->|REST: financial operations| Transactions
+    Users -->|gRPC: wallet operations| Wallet
+    Transactions -->|gRPC: wallet lookup| Wallet
 
-Key responsibilities:
-- **Wallet Lifecycle:** Creates user-owned wallets from `user_id` and phone number over gRPC, with duplicate-phone prevention. The disabled REST handler retains the older identity-based creation flow for possible reuse.
-- **Owned Wallets:** Stores each wallet's Users-service `user_id` for creation, user listing, and delete-all operations. Balance and single-wallet deletion use `wallet_id` only.
-- **CDC Balance Synchronization:** Consumes `POSTED` transaction events from Kafka topic `transactions_db.transactions` and atomically updates wallet balances using `$set: { balance: balance_after }` with a `processed_refs` sliding window for idempotency.
-- **Distributed Observability:** The active gRPC server uses OpenTelemetry instrumentation. The metrics-only HTTP server uses structured request logging and Prometheus middleware; the commented REST routes retain their previous `otelhttp` wrappers.
+    Users --> UsersDB[(MongoDB: users_db)]
+    Users -->|Rate limits and verification tokens| Redis[(Redis)]
+    Users -.->|Email worker| SMTP[SMTP server]
+    Wallet --> WalletDB[(MongoDB: wallet_db)]
+    Wallet -->|Wallet cache| Redis
+    Transactions -->|Write transaction ledger| TransactionsDB[(MongoDB: transactions_db)]
+    Notifications --> NotificationsDB[(MongoDB: notifications_db)]
 
----
+    TransactionsDB -.->|Change streams| Connect[Kafka Connect]
+    Connect -.->|POSTED transaction events| Kafka["Kafka<br/>transactions_db.transactions"]
+    Kafka -.->|Balance synchronization| Wallet
+    Kafka -.->|Notification events| Notifications
 
-## 🏗 Architecture
-
-```
-svc-wallet/
-├── cmd/
-│   └── main.go                     # Application entry point, wiring, & graceful shutdown
-├── api/
-│   ├── rest/                       # HTTP Delivery Layer
-│   │   ├── routes.go               # Active /metrics plus commented business/Swagger routes
-│   │   ├── controller.go           # WalletController wrapper
-│   │   └── request_response_handler.go # HTTP request binding, validation, & response encoding
-│   └── grpcserver/                 # gRPC Delivery Layer
-│       └── wallet_server.go        # Implements all WalletService RPCs and maps domain errors
-├── internal/
-│   └── wallet/                     # Domain Layer (Pure Business Logic)
-│       ├── model.go                # Wallet schema, domain error definitions, & constraints
-│       ├── dto.go                  # Request/Response data transfer objects & validators
-│       ├── repository.go           # Database interface contract (Repository)
-│       ├── service.go              # Core domain services & National ID parsing
-│       └── tx_manager.go           # Future multi-step transaction interface
-├── external/
-│   └── mongodb/                    # Infrastructure Layer (Data Access)
-│       ├── connection.go           # MongoDB client initialization & health check
-│       ├── repo.go                 # MongoDB repository implementation & atomic updates
-│       └── tx_manager.go           # MongoDB transaction manager stub
-│   └── kafka/                      # Kafka Consumer Integration
-│       └── consumer/
-│           └── consumer.go         # Sarama Kafka consumer for CDC transaction events
-├── util/
-│   ├── logger/                     # Zerolog wrapper with context trace injection
-│   └── tracer/                     # OpenTelemetry tracer provider setup
-├── tests/
-│   ├── wallet_acid_test.go         # Integration test suite
-│   ├── wallet_acid_test_docs.md    # Integration test documentation & expected states
-│   └── run_tests.ps1               # Automated test execution script
-├── docs/                           # Historical Swagger files; UI is not served
-├── Dockerfile                      # Multi-stage Alpine Docker build
-└── go.mod
+    classDef currentService fill:#dbeafe,stroke:#1d4ed8,stroke-width:4px,color:#172554,font-weight:bold;
+    class Wallet currentService;
 ```
 
-### Clean Architecture Layers
+Solid arrows show requests and data access; dashed arrows show asynchronous processing. Each service owns its MongoDB database. Users handles authentication and account management, delegates wallet operations to Wallet, and sends verification emails through its background worker. Transactions owns the financial ledger; its committed records feed wallet balance synchronization and notification processing through Kafka Connect and Kafka.
 
-| Layer | Package | Responsibility |
-|-------|---------|----------------|
-| **Transport / Delivery** | `api/rest`, `api/grpcserver` | Exposes internal metrics over HTTP and wallet business operations over gRPC. |
-| **Domain (Core)** | `internal/wallet` | Contains wallet entity, validation rules, business logic, National ID decoding, and repository interfaces. Free of external framework dependencies. |
-| **Infrastructure** | `external/mongodb` | Implements repository interfaces using MongoDB Go Driver, manages unique indexes and atomic updates. |
-| **Messaging** | `external/kafka/consumer` | Kafka consumer group that ingests CDC events from `transactions_db.transactions`, normalizes MongoDB extended JSON `_id`, and feeds events to the domain service for balance updates. |
-| **Cross-Cutting Utilities** | `util/logger`, `util/tracer` | Structured logging with Zerolog and OpenTelemetry distributed tracing context. |
+The shared monitoring stack uses Prometheus and Grafana for metrics and Jaeger for traces. See the root [`docker-compose.yml`](../docker-compose.yml) for how the system is connected, or explore the [Users](../Users-Service/README.md), [Transactions](../Transactions-Service/README.md), and [Notifications](../Notifications-Service/README.md) service READMEs.
 
 ---
 
-## ⚙️ How It Works
+# Wallet Service (`svc-wallet`)
 
-### 1. Wallet creation
-When Users creates a wallet through the internal `CreateWallet` RPC:
-1. Validates the MongoDB-format `user_id` and Egyptian mobile number.
-2. Creates an EGP wallet with balance `0`, the supplied owner ID and phone number, and an empty `processed_refs` array.
-3. Returns `wallet_id`, `balance`, and `created_at`.
-4. A unique `phone_number` index prevents two wallet documents from using the same number.
+An internal service in the Wallet & Transactions project, responsible for wallet accounts and a balance projection of the Transactions ledger.
 
-The older REST creation handler and DTO remain in the source but their route is commented. If restored, that path also accepts owner name, currency, and national ID and derives birth date from the national ID. Gateway-created wallets currently leave those legacy identity fields empty.
+**Status: work in progress.** Wallet lifecycle operations run over gRPC, and a Kafka consumer synchronizes balances. HTTP serves metrics only; clients manage wallets through the Users REST gateway. Remaining integration and reliability limitations are documented below.
 
-### 2. CDC Balance Synchronization (Kafka Consumer)
-The normal wallet-balance path consumes transaction events from Kafka:
-1. The Transactions Service commits an immutable ledger entry with `status: POSTED` and a calculated `balance_after`.
-2. Kafka Connect captures the MongoDB insert via change streams and publishes the event to `transactions_db.transactions`, keyed by `wallet_id`.
-3. The Wallet Service Kafka consumer deserializes the event, normalizes the MongoDB extended JSON `_id` field, and calls `ProcessTransactionEvent`.
-4. Executes an atomic `FindOneAndUpdate` on MongoDB:
-   - **Filter:** `{ phone_number: evt.PhoneNumber, processed_refs: { $ne: evt.ID } }`
-   - **Update:** `{ $set: { balance: evt.BalanceAfter, updated_at: now }, $push: { processed_refs: { $each: [evt.ID], $slice: -80 } } }`
-5. **Idempotent Replay Handling:** If `FindOneAndUpdate` returns no documents, the repository checks if `processed_refs` already contains the event ID. If so, the event was already processed and the current wallet state is returned safely.
-6. **Retry Resilience:** The consumer retries failed events up to 10 times with 500ms backoff before committing the offset.
+## Responsibilities
 
----
+- Create zero-balance EGP wallets linked to a Users-service owner ID and Egyptian mobile number.
+- List wallets by owner and return wallet details or balances.
+- Permanently delete individual wallets or all wallets belonging to a user.
+- Consume transaction events and project their `balance_after` into MongoDB.
+- Cache balances in Redis and invalidate cache entries after deletion.
+- Record HTTP/gRPC metrics, dependency metrics, request logs, and tracing spans.
 
-## 📡 API Endpoints
+The service owns wallet records in `wallet_db`. Transactions owns the financial ledger and decides whether deposits, withdrawals, and transfers are allowed. Users owns authentication, account data, and client-facing wallet ownership checks.
 
-### Operational HTTP API (Default Port: `8000`)
+## Architecture
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/metrics` | Prometheus metrics for internal scraping |
-
-The previous `/v1/wallet...` routes and Wallet Swagger UI are intentionally not registered. Their source is retained for reference. In Compose, neither Wallet port is published to the host; Users and Transactions reach gRPC through the internal Docker network.
-
-To restore the HTTP business API later, uncomment the saved imports and route registrations in `api/rest/routes.go`. The controller and handler source remain present and wired.
-
-> ⚠️ **Note on Balance Modification:**  
-> Normal balance synchronization uses the **CDC pipeline**. The legacy `ModifyBalance` RPC remains registered for existing internal compatibility.
-
-### ⚡ gRPC API (Default Port: `50051`)
-
-Defined in contract `wallet.v1.WalletService` (`github.com/Muhmd95/Contracts/wallet/v1`):
-
-| RPC Method | Main request fields | Description |
-|------------|---------------------|-------------|
-| `CreateWallet` | `user_id`, `phone_number` | Creates a zero-balance EGP wallet and stores its owner ID. |
-| `GetUserWallets` | `user_id` | Lists wallets using the `user_id` index. |
-| `GetWalletBalance` | `wallet_id` | Uses the existing Redis/Mongo balance lookup. |
-| `DeleteWallet` | `wallet_id` | Permanently deletes one wallet and invalidates its cache key. |
-| `DeleteUserWallets` | `user_id` | Reads the user's wallet IDs, deletes the documents with `DeleteMany`, then invalidates their Redis keys. Repeated calls succeed. |
-| `GetWallet` | `phone_number` | Retrieves wallet ID, owner name, and balance for existing internal consumers. |
-| `ModifyBalance` | `phone_number`, `amount`, `referenceID` | Legacy internal method retained for compatibility; CDC remains the normal balance path. |
-
----
-
-## 🗄 Data Model (`wallets` collection)
-
-```json
-{
-  "_id": {"$oid": "6701a2b3c4d5e6f7a8b9c0d1"},
-  "user_id": {"$oid": "6701a2b3c4d5e6f7a8b9c0c0"},
-  "phone_number": "01012345678",
-  "owner_name": "",
-  "balance": 5000,
-  "currency_code": "EGP",
-  "national_id": "",
-  "birth_date": "0001-01-01T00:00:00Z",
-  "processed_refs": ["6701a2c0c4d5e6f7a8b9c0d2"],
-  "family_id": null,
-  "created_at": "2026-09-06T10:00:00Z",
-  "updated_at": "2026-09-06T10:05:00Z"
-}
+```mermaid
+flowchart TD
+    Users[Users Service] -->|Wallet lifecycle gRPC| RPC[Wallet gRPC server]
+    Transactions[Transactions Service] -->|Wallet lookup gRPC| RPC
+    RPC --> Service[Wallet business service]
+    Kafka[Kafka transaction events] --> Consumer[Kafka consumer]
+    Consumer --> Service
+    Service --> Repo[Repository interface]
+    Repo --> Mongo[(MongoDB: wallet_db)]
+    Service --> Redis[(Redis balance cache)]
+    Prometheus[Prometheus] -->|GET /metrics| HTTP[Internal HTTP server]
 ```
 
-### Database Indexes
+### Layers and dependencies
 
-| Index Name | Keys | Properties | Purpose |
-|------------|------|------------|---------|
-| `unique_phone` | `{"phone_number": 1}` | `Unique: true` | Prevents duplicate wallet creation for the same phone number. |
-| `wallets_by_user` | `{"user_id": 1}` | Non-unique | Makes owner-scoped listing and bulk deletion efficient. |
+| Layer | Location | Responsibility |
+|---|---|---|
+| Startup | `cmd/` | Load configuration, connect dependencies, wire components, run HTTP/gRPC servers and the Kafka consumer, handle shutdown. |
+| gRPC transport | `api/grpcserver/` | Implement the shared Wallet contract, translate DTOs, map errors, record RPC logs and metrics. |
+| HTTP transport | `api/rest/` | Serve metrics; retain disabled business handlers and historical Swagger route definitions. |
+| Business logic | `internal/wallet/` | Wallet creation, listing, deletion, balance lookup, event processing, and repository interface. |
+| Persistence | `external/mongodb/` | Create indexes, query wallets, delete records, and apply atomic balance updates. |
+| Cache | `external/redis/` | Construct the Redis client used directly by the business service. |
+| Messaging | `external/kafka/consumer/` | Decode CDC events, normalize transaction IDs, retry processing, and mark offsets. |
+| Utilities | `util/` | Structured logging, Prometheus metrics, and OpenTelemetry setup. |
 
-Wallet documents created before this ownership change have no `user_id`. They remain available to the legacy phone/ID lookups but do not appear in Users owner-scoped operations. Recreate or explicitly migrate development data when testing the gateway.
+Repository and event-processor interfaces separate persistence and consumption from business operations. The service directly uses the Redis client.
 
-### Deletion and cache invalidation
+### Request and event pipelines
 
-- `DeleteWallet` deletes one document by `wallet_id`, then removes `wallet:<wallet_id>` from Redis.
-- `DeleteUserWallets` first reads the IDs indexed by `user_id`, executes one `DeleteMany` for that user, then deletes all corresponding Redis keys.
-- Balance reads remain cache-first. A cache miss loads the wallet from MongoDB and repopulates Redis.
-- Redis invalidation failures are logged after MongoDB deletion; the deletion is not rolled back.
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-- **Go 1.22+** (configured for Go 1.26 toolchain)
-- **MongoDB** instance (local or MongoDB Atlas replica set)
-- Shared Contracts module (`github.com/Muhmd95/Contracts`)
-
-### Environment Configuration
-
-Create a `.ENV` file inside `svc-wallet/`:
-
-```env
-SERVER_PORT=8000
-GRPC_SERVER_PORT=50051
-MONGO_URI=mongodb://localhost:27017
-MONGO_DB_NAME=wallet_db
-KAFKA_BROKERS=localhost:9092
-KAFKA_GROUP_ID=wallet-balance-consumer
-KAFKA_TOPIC=transactions_db.transactions
-REDIS_ADDR=localhost:6379
-APP_ENV=development
-OTEL_EXPORTER_OTLP_ENDPOINT=localhost:4318
+```text
+gRPC:          OpenTelemetry + observability interceptor -> RPC -> Service -> Repository/cache
+HTTP:          RequestLogger -> MetricsMiddleware -> Router -> /metrics
+Kafka:         Decode -> Normalize transaction ID -> Retry service processing -> Mark message
 ```
 
-| Variable | Required | Default | Description |
-|----------|:--------:|:-------:|-------------|
-| `MONGO_URI` | ✅ | — | MongoDB connection string (supports MongoDB Atlas replica set) |
-| `MONGO_DB_NAME` | ❌ | `wallet_db` | Target database name |
-| `SERVER_PORT` | ❌ | `8000` | Internal HTTP metrics server port |
-| `GRPC_SERVER_PORT` | ❌ | `50051` | gRPC server port for inter-service communication |
-| `KAFKA_BROKERS` | ✅ | — | Kafka broker addresses (e.g. `localhost:9092` or `kafka:9092`) |
-| `KAFKA_GROUP_ID` | ✅ | — | Consumer group ID for CDC balance synchronization |
-| `KAFKA_TOPIC` | ✅ | — | Kafka topic containing transaction CDC events (`transactions_db.transactions`) |
-| `REDIS_ADDR` | ❌ | `localhost:6379` | Redis address used by the balance cache |
-| `APP_ENV` | ❌ | `development` | Uses JSON/info logging when set to `production`; otherwise uses debug console logging |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | ❌ | — | OTLP HTTP collector address, such as `jaeger:4318`; tracing remains local when omitted |
+Both Users and Transactions use internal gRPC without transport TLS in the current project. Wallet does not validate user JWTs; Users performs its client-facing ownership checks before calling Wallet.
 
-### Observability
+## Files
 
-- gRPC logs and metrics include the method, result code, and duration. Correlated logs include `trace_id` and `span_id`.
-- Service and MongoDB repository work appears as child spans of incoming gRPC traces. Kafka messages start independent traces because CDC records do not currently carry upstream trace context.
-- `/metrics` exposes bounded-label HTTP/gRPC latency and request counts, MongoDB operation duration, Redis outcomes, and Kafka outcome/retry/duration metrics. IDs and phone numbers are not metric labels.
-- Kafka errors log topic, partition, and offset without logging the raw message payload.
+```text
+Wallet-Service/
+|-- README.md
+|-- .github/workflows/ci.yml          # Build and package tests
+`-- svc-wallet/
+    |-- cmd/main.go                  # Configuration, wiring, servers, consumer, shutdown
+    |-- api/
+    |   |-- grpcserver/
+    |   |   |-- wallet_server.go      # RPC implementations, error mapping, observability
+    |   |   `-- wallet_server_test.go # Wallet lifecycle tests with a memory repository
+    |   `-- rest/
+    |       |-- routes.go            # Active /metrics; commented business/Swagger routes
+    |       |-- routes_test.go        # Checks the metrics-only HTTP surface
+    |       |-- controller.go
+    |       |-- request_response_handler.go
+    |       `-- middleware.go        # HTTP logging and metrics
+    |-- internal/wallet/
+    |   |-- model.go                 # Wallet schema and domain errors
+    |   |-- dto.go                   # DTOs, event fields, phone/national-ID validation
+    |   |-- repository.go            # Persistence interface
+    |   `-- service.go               # Wallet lifecycle, cache, and balance projection
+    |-- external/
+    |   |-- mongodb/
+    |   |   |-- connection.go
+    |   |   `-- repo.go              # Indexes, queries, deletion, atomic balance updates
+    |   |-- redis/client.go
+    |   `-- kafka/consumer/consumer.go
+    |-- util/                        # logger/, metrics/, tracer/
+    |-- tests/                       # Historical REST integration suite and runner
+    |-- docs/                        # Historical Swagger files; UI is disabled
+    |-- Dockerfile
+    |-- go.mod / go.sum
+    |-- .ENV.example
+    |-- .air.toml / .golangci.yml
+    `-- .dockerignore / .gitignore
+```
 
-### Run Locally
+Shared RPC definitions live in [`../Contracts/wallet/v1/wallet.proto`](../Contracts/wallet/v1/wallet.proto). The root [`docker-compose.yml`](../docker-compose.yml) wires the wider system, and [Kafka Connect](../kafka-connect/README.md) documents the CDC pipeline.
 
-```bash
-cd Wallet-Service/svc-wallet
+## Main flows
+
+### Wallet creation and listing
+
+1. Users calls `CreateWallet` with `user_id` and `phone_number`.
+2. Wallet validates the owner ID as a MongoDB ObjectID and the mobile number.
+3. Insert a wallet with balance `0`, currency `EGP`, the owner ID, and an empty `processed_refs` array.
+4. Return `wallet_id`, `balance`, and `created_at`.
+5. `GetUserWallets` queries by `user_id`, sorts by creation time, and returns each wallet's ID, phone, balance, currency, and creation time.
+
+The unique phone index prevents multiple wallets sharing a number. Wallet does not enforce Users' three-wallet limit or check that the requested owner exists in Users. Gateway-created wallets leave the legacy owner-name, national-ID, and birth-date fields empty.
+
+### CDC balance synchronization
+
+1. Transactions commits a `POSTED` ledger entry with `balance_after`.
+2. Kafka Connect captures the insert and publishes it to `transactions_db.transactions`, keyed by `wallet_id`.
+3. The consumer decodes the event and normalizes an `_id` string containing MongoDB extended JSON.
+4. The repository atomically matches `phone_number` and an event ID absent from `processed_refs`, sets the balance to `balance_after`, and retains the last **80** processed IDs.
+5. If the ID is already present, the repository returns the existing wallet state.
+6. The service updates the Redis balance hash when the event timestamp is at least as recent as the cached timestamp.
+
+The consumer makes up to **10 processing attempts**, with **500ms** sleeps after failures. Malformed JSON, empty IDs, and messages still failing after the final attempt are logged and marked for offset advancement. There is no dead-letter queue.
+
+The MongoDB update sets an absolute balance rather than adding the transaction amount. Deduplication is limited to the retained IDs; MongoDB does not enforce an event sequence or timestamp when updating the projection.
+
+### Balance reads and deletion
+
+- `GetWalletBalance` reads `wallet:<wallet_id>` from Redis first. A miss loads MongoDB and populates the hash's `balance` and `last_time` fields.
+- Redis read failures fall back to MongoDB. Malformed cached numeric fields return an error; the cache is not automatically repaired.
+- `DeleteWallet` deletes the MongoDB record, then attempts to delete its cache key. A missing wallet returns `NotFound`.
+- `DeleteUserWallets` reads owner-scoped IDs, calls `DeleteMany`, and invalidates their cache keys. Repeating the bulk deletion succeeds.
+- Redis invalidation failures are logged without rolling back deletion.
+
+The retained `ModifyBalance` RPC calls the same absolute-balance repository update, despite its legacy `amount` field name. It rejects zero at the RPC boundary, does not refresh Redis, and is not the normal Transactions balance path.
+
+## Data and validation
+
+| Storage | Main fields | Indexes / behavior |
+|---|---|---|
+| MongoDB `wallets` | `_id`, `user_id`, `phone_number`, `owner_name`, `balance`, `currency_code`, `national_id`, `birth_date`, optional `family_id`, `processed_refs`, `created_at`, `updated_at` | Unique `unique_phone` on `phone_number`; non-unique `wallets_by_user` on `user_id`. |
+| Redis `wallet:<wallet_id>` | Hash fields `balance`, `last_time` | Timestamp is epoch milliseconds. No expiry is configured by the service. |
+
+- Owner and wallet IDs used by lifecycle methods must be valid MongoDB ObjectID strings.
+- Mobile numbers contain 11 digits and start with `010`, `011`, `012`, or `015`; surrounding spaces are trimmed.
+- The active creation RPC fixes currency to `EGP`.
+- The disabled REST creation path also validates owner name, currency length, and national ID, then derives birth date. It is retained source rather than an active API.
+- Financial capacity and overdraft checks belong to Transactions. The shared maximum constant is `9000000000000000`; the projection update does not independently enforce it.
+- Wallets created before owner IDs were added may lack `user_id` and will not appear in owner-scoped listing or bulk deletion.
+
+## gRPC and HTTP endpoints
+
+The active contract is `wallet.v1.WalletService`, normally listening on **50051**.
+
+| RPC | Main request fields | Success |
+|---|---|---|
+| `CreateWallet` | `user_id`, `phone_number` | `wallet_id`, `balance`, `created_at` |
+| `GetUserWallets` | `user_id` | `wallets`: ID, phone, balance, currency, creation time |
+| `GetWalletBalance` | `wallet_id` | `wallet_id`, `balance`, `updated_at` |
+| `DeleteWallet` | `wallet_id` | `success: true` |
+| `DeleteUserWallets` | `user_id` | `success: true`, including an empty result |
+| `GetWallet` | `phone_number` | `wallet_id`, `owner_name`, `balance`; used by Transactions |
+| `ModifyBalance` | `phone_number`, `amount`, `referenceID` | `wallet_id`, `balance`, `updated_at`; legacy compatibility |
+
+HTTP normally listens on **8000**:
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/metrics` | Internal Prometheus metrics |
+
+Wallet business REST routes and Swagger UI are commented out. No dedicated health endpoint is registered. In Compose, both Wallet ports are exposed internally and neither is published to the host. Use the [Users wallet routes](../Users-Service/README.md#wallet-proxy-routes) for client-facing HTTP operations.
+
+### Error responses
+
+Lifecycle RPCs use the following mappings:
+
+| Error | gRPC code |
+|---|---|
+| Invalid user ID, wallet ID, phone number, or national ID | `InvalidArgument` |
+| Wallet not found | `NotFound` |
+| Duplicate phone number | `AlreadyExists` |
+| Insufficient balance or maximum capacity error | `FailedPrecondition` |
+| Canceled request / expired deadline | `Canceled` / `DeadlineExceeded` |
+| Unexpected dependency error | `Internal`; details hidden |
+
+The retained `GetWallet` and `ModifyBalance` methods use their own error handling rather than the shared lifecycle mapper. Capacity/overdraft errors remain defined, but normal financial validation runs in Transactions.
+
+## Logging, metrics, and tracing
+
+Zerolog writes console logs by default and JSON at INFO level when `APP_ENV=production`. HTTP completion logs and gRPC interceptor logs record the request or method, status/result, and elapsed duration. Context-aware logs include `trace_id` and `span_id`.
+
+The active gRPC server uses OpenTelemetry instrumentation; service and repository operations create child spans. Kafka processing starts an independent trace per message because CDC events do not carry the original request's trace context. An optional OTLP HTTP endpoint exports traces to Jaeger.
+
+`/metrics` exposes:
+
+- HTTP request counts, duration, and request/response sizes.
+- `grpc_requests_total` and `grpc_request_duration_seconds`.
+- `mongodb_operation_duration_seconds`.
+- `redis_operations_total` by operation and outcome.
+- `kafka_messages_total`, `kafka_retries_total`, and `kafka_process_duration_seconds`.
+
+HTTP labels use route patterns; dependency labels do not contain wallet IDs or phone numbers. Consumer failure logs include topic, partition, and offset without the raw payload.
+
+## Configuration and local development
+
+The module declares Go **1.26.5**. Local development needs MongoDB, Kafka, Redis for caching, and the published Contracts dependency. CDC testing also needs MongoDB change streams and Kafka Connect.
+
+| Variable | Default / requirement |
+|---|---|
+| `MONGO_URI` | Required. MongoDB connection string. |
+| `MONGO_DB_NAME` | `wallet_db` |
+| `SERVER_PORT` | `8000`; internal HTTP metrics. |
+| `GRPC_SERVER_PORT` | `50051` |
+| `KAFKA_BROKERS` | Required; use `localhost:9092` locally or `kafka:9092` inside Compose. |
+| `KAFKA_GROUP_ID` | Required; e.g. `wallet-balance-consumer`. Use a different group from Notifications. |
+| `KAFKA_TOPIC` | Required; `transactions_db.transactions`. |
+| `REDIS_ADDR` | `localhost:6379`; Compose overrides this to `redis:6379`. |
+| `APP_ENV` | `production` enables JSON/info logging; other values use debug console logging. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Optional host:port, e.g. `localhost:4318` or `jaeger:4318`. |
+
+From this directory:
+
+```powershell
+cd svc-wallet
+Copy-Item .ENV.example .ENV # First-time setup only; preserve an existing .ENV
+# Fill in MongoDB, Kafka, Redis, and optional tracing settings.
 go run ./cmd
 ```
 
-### Run with Docker
+Startup loads `.ENV` before logging/tracing, checks MongoDB, creates indexes, and constructs the Kafka consumer group. Redis is created without a startup ping. The current broker setting is passed as one address; comma-separated broker parsing is not implemented.
 
-From the repository root, use `docker compose build wallet` or `docker compose up wallet`. Wallet uses the published Contracts version listed in `go.mod`.
+From the workspace root:
 
----
+```powershell
+docker compose build wallet
+docker compose up -d wallet
+```
 
-## 🧪 Testing
+The Compose setup uses each service's `.ENV`. Configure Kafka addresses for the Docker network; the local startup commands require broker metadata reachable from the host.
 
-Run the normal suite for the gRPC wallet lifecycle and the internal-only HTTP surface:
+### Current integration limits
 
-```bash
-cd Wallet-Service/svc-wallet
+- Balances are eventually consistent with the ledger. A successful Transactions response can precede the Wallet projection update.
+- Deletion is a hard delete and is not coordinated with Transactions. Historical ledger entries can retain deleted IDs, in-flight events can target a deleted phone, and remaining balances are not protected.
+- Reusing a phone after deletion can reconnect a new wallet to old phone-keyed ledger/events. Treat the current deletion flow as project account-data cleanup.
+- Users' local wallet-ID array and Wallet's owner records are separate writes; there is no synchronization or reconciliation process.
+- Cache invalidation is best effort. A failed delete can leave a stale cache entry with no service-configured expiry.
+- Historical REST integration tests need migration before they can validate the active gateway/gRPC setup.
+
+## Deferred issues to revisit
+
+These items are documented follow-up work, not implemented fixes.
+
+- [ ] **Preserve projection order during replay.** Add a durable ordering check and a replay strategy that remains correct after an ID leaves the 80-entry deduplication window.
+- [ ] **Recover from consumer failures.** Retain or route events that exhaust retries instead of marking them for advancement without a recovery queue.
+- [ ] **Make cache recovery reliable.** Define expiry, repair malformed hashes, and retry invalidation after MongoDB deletion.
+- [ ] **Coordinate financial account closure.** Define how balances, pending operations, historical ledger records, and phone reuse interact with wallet deletion.
+- [ ] **Retire or align the legacy modification RPC.** Its absolute-balance behavior and cache handling differ from the apparent amount-based interface.
+- [ ] **Migrate historical tests and owner data.** Use Users REST or Wallet gRPC, and handle records lacking `user_id`.
+
+## Verification
+
+From `svc-wallet`:
+
+```powershell
+go build ./...
 go test ./...
 ```
 
-The older `tests/wallet_acid_test.go` suite targets the disabled Wallet REST API and is kept behind the `integration` build tag as historical material. It must be migrated to Users REST or Wallet gRPC before it can be used again:
+| Test file | Coverage |
+|---|---|
+| `svc-wallet/api/grpcserver/wallet_server_test.go` | Wallet creation, owner-scoped listing, balance lookup, single/bulk deletion, and lookup after deletion using a memory repository. |
+| `svc-wallet/api/rest/routes_test.go` | Metrics remains available while business and Swagger routes stay disabled. |
 
-```bash
-cd Wallet-Service/svc-wallet
-go test -v -tags=integration -count=1 ./tests/
-```
+The package tests run without live MongoDB or Redis. Wallet CI runs dependency download, build, and package tests with Go 1.26.5.
 
-*Its previous scenarios are described in [wallet_acid_test_docs.md](svc-wallet/tests/wallet_acid_test_docs.md).*
-
----
-
-## ⚠️ Domain Errors
-
-| Error | Meaning | Commented REST mapping | gRPC Code |
-|-------|---------|:-----------:|:---------:|
-| `wallet not found` | No wallet matching the provided identifier exists | `404 Not Found` | `NotFound (5)` |
-| `phone number is already registered` | Wallet creation conflict on phone number | `409 Conflict` | `AlreadyExists (6)` |
-| `invalid phone number format` | Phone number failed validation rules | `400 Bad Request` | `InvalidArgument (3)` |
-| `insufficient balance for the requested operation` | Withdrawal would cause negative balance | `400 Bad Request` | `FailedPrecondition (9)` |
-| `deposit exceeds maximum wallet capacity` | Deposit would exceed maximum allowable balance | `400 Bad Request` | `FailedPrecondition (9)` |
-| `invalid national id format` | National ID failed validation rules | `400 Bad Request` | `InvalidArgument (3)` |
-| `invalid wallet id format` | Provided Hex string cannot convert to ObjectID | `400 Bad Request` | `InvalidArgument (3)` |
-| `invalid user id format` | Provided Users-service ID is not a MongoDB ObjectID | No legacy mapping | `InvalidArgument (3)` |
-
-### Deletion scope
-
-Deletion is deliberately a hard delete for this learning project. Re-registering a deleted user can create completely new wallets. This does not coordinate with Transactions: historical ledger records may reference deleted wallet IDs, in-flight CDC events may target a deleted phone, and remaining balances are not protected. Treat it as account-data cleanup rather than production financial account closure.
+The `integration`-tagged [historical wallet suite](svc-wallet/tests/wallet_acid_test_docs.md) targets the disabled Wallet REST API. Its retained command is `go test -v -tags=integration -count=1 ./tests/`; it is not a working validation path for the current default deployment. End-to-end verification needs live dependencies and gateway/gRPC tests covering ledger-to-Wallet convergence.
